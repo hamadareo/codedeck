@@ -1,0 +1,11 @@
+node_modules/
+dist/
+out/
+release/
+*.log
+.env
+.env.*
+.DS_Store
+Thumbs.db
+# Phase 0 probe output (may contain terminal screen text)
+spike/probe-output/

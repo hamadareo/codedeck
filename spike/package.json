@@ -1,0 +1,54 @@
+{
+  "name": "codedeck-spike",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Phase 0 spike: run the real claude CLI inside xterm.js + node-pty with per-profile CLAUDE_CONFIG_DIR",
+  "main": "main.js",
+  "scripts": {
+    "start": "electron .",
+    "probe": "node pty-probe.mjs",
+    "smoke": "node pty-smoke.mjs",
+    "pack": "electron-builder --dir"
+  },
+  "dependencies": {
+    "@xterm/addon-fit": "0.11.0",
+    "@xterm/addon-unicode11": "0.9.0",
+    "@xterm/addon-web-links": "0.12.0",
+    "@xterm/xterm": "6.0.0",
+    "node-pty": "1.1.0"
+  },
+  "devDependencies": {
+    "@xterm/headless": "6.0.0",
+    "electron": "44.7.0",
+    "electron-builder": "26.15.3"
+  },
+  "build": {
+    "appId": "dev.codedeck.spike",
+    "productName": "CodeDeckSpike",
+    "npmRebuild": false,
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "platform.js",
+      "renderer/**",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "node_modules/node-pty/**"
+    ],
+    "mac": {
+      "target": "dir"
+    },
+    "win": {
+      "target": "dir"
+    }
+  },
+  "allowScripts": {
+    "electron@44.7.0": true,
+    "node-pty@1.1.0": true,
+    "electron-winstaller@5.4.0": true
+  }
+}

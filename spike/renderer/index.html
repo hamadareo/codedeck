@@ -1,0 +1,39 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'" />
+    <title>CodeDeck spike</title>
+    <link rel="stylesheet" href="../node_modules/@xterm/xterm/css/xterm.css" />
+    <style>
+      html, body { margin: 0; height: 100%; background: #1e1e1e; color: #ddd; font: 13px system-ui, sans-serif; }
+      body { display: flex; flex-direction: column; }
+      header { display: flex; gap: 8px; align-items: center; padding: 8px; border-bottom: 1px solid #333; flex-wrap: wrap; }
+      header button { background: #2d2d2d; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 10px; cursor: pointer; }
+      header input { background: #111; color: #eee; border: 1px solid #555; border-radius: 4px; padding: 4px 6px; width: 320px; }
+      #info { margin-left: auto; opacity: .7; font-size: 12px; }
+      #panes { flex: 1; display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; gap: 4px; padding: 4px; min-height: 0; }
+      .pane { display: flex; flex-direction: column; min-width: 0; min-height: 0; border: 2px solid var(--c); border-radius: 4px; }
+      .bar { display: flex; gap: 8px; align-items: center; padding: 3px 6px; background: color-mix(in srgb, var(--c) 30%, #1e1e1e); font-size: 12px; }
+      .badge { background: var(--c); color: #fff; border-radius: 3px; padding: 0 6px; font-weight: 600; }
+      .bar .path { opacity: .7; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+      .bar button { margin-left: auto; background: none; border: none; color: #ccc; cursor: pointer; }
+      .term { flex: 1; min-height: 0; padding: 2px; }
+    </style>
+  </head>
+  <body>
+    <header>
+      <button data-profile="spike-personal" data-color="#2f6fdb">+ 個人 (spike-personal)</button>
+      <button data-profile="spike-team" data-color="#2e9d55">+ チーム (spike-team)</button>
+      <button data-profile="" data-color="#8a6d3b">+ 既定 (~/.claude)</button>
+      <label>cwd <input id="cwd" placeholder="作業ディレクトリ(空ならホーム)" /></label>
+      <span id="info"></span>
+    </header>
+    <div id="panes"></div>
+    <script src="../node_modules/@xterm/xterm/lib/xterm.js"></script>
+    <script src="../node_modules/@xterm/addon-fit/lib/addon-fit.js"></script>
+    <script src="../node_modules/@xterm/addon-unicode11/lib/addon-unicode11.js"></script>
+    <script src="../node_modules/@xterm/addon-web-links/lib/addon-web-links.js"></script>
+    <script src="renderer.js"></script>
+  </body>
+</html>
