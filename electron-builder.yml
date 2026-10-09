@@ -1,0 +1,26 @@
+appId: dev.codedeck.app
+productName: CodeDeck
+directories:
+  output: release
+  buildResources: build
+files:
+  - out/**
+  - package.json
+# node-pty ships N-API prebuilds; rebuilding needs a C++ toolchain (docs/decisions.md)
+npmRebuild: false
+asarUnpack:
+  - node_modules/node-pty/**
+mac:
+  category: public.app-category.developer-tools
+  target:
+    - target: dmg
+      arch: [universal]
+  hardenedRuntime: true
+  # Signing / notarization are enabled only when CSC_* / APPLE_* secrets are present in CI.
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true

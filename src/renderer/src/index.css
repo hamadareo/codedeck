@@ -1,0 +1,52 @@
+@import 'tailwindcss';
+
+/* Dark theme for Phase 1; light/system themes arrive in Phase 2 (§4). Contrast ≥ WCAG AA. */
+@theme {
+  --color-bg: #0b0d12;
+  --color-panel: #12151c;
+  --color-panel-2: #191d26;
+  --color-line: #2a2f3b;
+  --color-fg: #e6e8ee;
+  --color-muted: #a3aab8;
+  --color-accent: #60a5fa;
+  --color-danger: #f87171;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    'Hiragino Sans',
+    'Yu Gothic UI',
+    'Meiryo',
+    sans-serif;
+  font-size: 13px;
+}
+
+/* Japanese UI fonts draw "\" as "¥"; paths must use a font that shows a backslash. */
+code,
+.font-path {
+  font-family: 'Cascadia Mono', Consolas, Menlo, 'SF Mono', monospace;
+}
+
+:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 1px;
+}
+
+.xterm {
+  height: 100%;
+  padding: 4px 0 0 6px;
+}

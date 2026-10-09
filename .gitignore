@@ -9,3 +9,5 @@ release/
 Thumbs.db
 # Phase 0 probe output (may contain terminal screen text)
 spike/probe-output/
+test-results/
+playwright-report/
