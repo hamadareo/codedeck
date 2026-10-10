@@ -3,6 +3,7 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { WebglAddon } from '@xterm/addon-webgl';
+import { SearchAddon } from '@xterm/addon-search';
 import { decideTerminalKey, pasteDecision, type AppAction, type Platform } from '@shared/keymap';
 import { TERMINAL_THEMES, terminalFontFamily, type ResolvedTheme } from '@shared/theme';
 import { api } from '../api';
@@ -18,6 +19,7 @@ import { api } from '../api';
 interface Entry {
   term: Terminal;
   fit: FitAddon;
+  search: SearchAddon;
   host: HTMLDivElement;
   /** Live chunks that arrived while the snapshot was loading. */
   pending: { data: string; end: number }[] | null;
@@ -116,6 +118,8 @@ export function getTerminal(id: string): Entry {
   term.loadAddon(new Unicode11Addon());
   term.unicode.activeVersion = '11';
   term.loadAddon(new WebLinksAddon((_e, uri) => api.send('link:open', uri)));
+  const search = new SearchAddon();
+  term.loadAddon(search);
   term.open(host);
   // GPU rendering keeps typing responsive with many busy sessions (§4). Falls back to the
   // DOM renderer when WebGL is unavailable, emulated in software, or the context is lost.
@@ -162,7 +166,7 @@ export function getTerminal(id: string): Entry {
   term.onBinary((data) => api.send('pty:input', id, data));
   term.onResize(({ cols, rows }) => api.send('pty:resize', id, cols, rows));
 
-  const entry: Entry = { term, fit, host, pending: [], end: 0 };
+  const entry: Entry = { term, fit, search, host, pending: [], end: 0 };
   entries.set(id, entry);
   void api.invoke('pty:snapshot', id).then(
     (snap) => {
@@ -201,6 +205,62 @@ export function terminalText(id: string): string {
 // Read access for automated UI tests: with GPU rendering the text is not in the DOM.
 (window as unknown as { __codedeckTerminalText?: (id: string) => string }).__codedeckTerminalText =
   terminalText;
+
+// ---------- find in the terminal (scrollback included) ----------
+
+const findListeners = new Set<(id: string) => void>();
+
+/** Open the search bar of this session's terminal (shortcut / palette). */
+export function requestFind(id: string): void {
+  for (const l of findListeners) l(id);
+}
+
+export function onFindRequest(fn: (id: string) => void): () => void {
+  findListeners.add(fn);
+  return () => findListeners.delete(fn);
+}
+
+const DECORATIONS = {
+  matchBackground: '#a1620788',
+  matchBorder: '#00000000',
+  matchOverviewRuler: '#f59e0b',
+  activeMatchBackground: '#f59e0b',
+  activeMatchBorder: '#fde68a',
+  activeMatchColorOverviewRuler: '#fde68a',
+};
+
+/** Highlight every match and move to the next / previous one. */
+export function findInTerminal(
+  id: string,
+  query: string,
+  backwards: boolean,
+  caseSensitive: boolean,
+  /** While typing: stay on the current match when it still matches. */
+  incremental = false,
+): boolean {
+  const e = entries.get(id);
+  if (!e || !query) return false;
+  const opts = { caseSensitive, incremental, decorations: DECORATIONS };
+  return backwards ? e.search.findPrevious(query, opts) : e.search.findNext(query, opts);
+}
+
+/** "3 of 12": reported after each search. resultIndex is -1 when there is no current match. */
+export function onFindResults(
+  id: string,
+  fn: (r: { resultIndex: number; resultCount: number }) => void,
+): () => void {
+  const e = entries.get(id);
+  if (!e) return () => {};
+  const d = e.search.onDidChangeResults(fn);
+  return () => d.dispose();
+}
+
+export function clearFind(id: string): void {
+  const e = entries.get(id);
+  if (!e) return;
+  e.search.clearDecorations();
+  e.term.clearSelection();
+}
 
 export function hasTerminal(id: string): boolean {
   return entries.has(id);

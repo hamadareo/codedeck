@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer } from 'electron';
+import { contextBridge, ipcRenderer, webUtils } from 'electron';
 import {
   EVENT_CHANNELS,
   INVOKE_CHANNELS,
@@ -28,6 +28,14 @@ const api: CodeDeckApi = {
       (listener as (...a: unknown[]) => void)(...args);
     ipcRenderer.on(channel, wrapped);
     return () => ipcRenderer.removeListener(channel, wrapped);
+  },
+  // Drag and drop into a terminal: File.path is gone in current Electron.
+  pathForFile(file: File) {
+    try {
+      return webUtils.getPathForFile(file);
+    } catch {
+      return '';
+    }
   },
 } as CodeDeckApi;
 

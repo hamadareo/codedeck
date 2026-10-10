@@ -1,5 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import type { FileEntry, FilePreview, Session } from '@shared/types';
+import { fileReferences } from '@shared/fileRef';
+
+/** Drag type for an explorer entry (its path relative to the session folder). */
+export const DND_FILE = 'application/x-codedeck-file';
 import { api, errorKey } from '../api';
 import { useT } from '../i18n';
 import { pasteInto } from '../terminal/registry';
@@ -152,6 +156,13 @@ export function FilesPanel({ session }: { session: Session | null }) {
                 style={{ paddingLeft: depth * 12 + 4 }}
                 onClick={() => (e.kind === 'dir' ? toggle(e.path) : setSelected(e.path))}
                 onDoubleClick={() => e.kind === 'file' && void api.invoke('files:open', cwd, e.path)}
+                draggable
+                onDragStart={(ev) => {
+                  // Drop on a terminal: "@path" for claude (folders too: claude can list them).
+                  ev.dataTransfer.setData(DND_FILE, e.path);
+                  ev.dataTransfer.setData('text/plain', e.path);
+                  ev.dataTransfer.effectAllowed = 'copy';
+                }}
                 title={e.path}
                 aria-expanded={e.kind === 'dir' ? isOpen : undefined}
                 data-testid="file-entry"
@@ -226,9 +237,8 @@ export function FilesPanel({ session }: { session: Session | null }) {
               disabled={session.location !== 'embedded'}
               title={t('files.mentionHint')}
               onClick={() => {
-                // claude's own file reference: "@path" (quoted when the path has spaces).
-                const ref = /\s/.test(selected) ? `@"${selected}" ` : `@${selected} `;
-                if (pasteInto(session.id, ref)) flash('files.mentioned');
+                // claude's own file reference: "@path".
+                if (pasteInto(session.id, fileReferences(cwd, [selected]))) flash('files.mentioned');
               }}
               data-testid="file-mention"
             >

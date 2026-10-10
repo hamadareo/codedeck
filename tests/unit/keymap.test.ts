@@ -124,6 +124,23 @@ describe('Phase 2 shortcuts', () => {
   });
 });
 
+describe('find in terminal', () => {
+  it('⌘F on macOS, Ctrl+Shift+F elsewhere; plain Ctrl+F stays with the CLI', () => {
+    expect(decideTerminalKey(k('f', { metaKey: true }), 'mac', false)).toEqual({
+      kind: 'app',
+      action: 'find',
+    });
+    expect(decideTerminalKey(k('F', { ctrlKey: true, shiftKey: true }), 'other', false)).toEqual({
+      kind: 'app',
+      action: 'find',
+    });
+    expect(decideTerminalKey(k('f', { ctrlKey: true }), 'other', false)).toEqual({ kind: 'pass' });
+    expect(decideTerminalKey(k('f', { ctrlKey: true }), 'mac', false)).toEqual({ kind: 'pass' });
+    expect(shortcutLabel('find', 'mac')).toBe('⌘F');
+    expect(shortcutLabel('find', 'other')).toBe('Ctrl+Shift+F');
+  });
+});
+
 describe('pasteDecision', () => {
   it('text goes through bracketed paste', () => {
     expect(pasteDecision({ text: 'hello', hasImage: false }, 'other')).toEqual({

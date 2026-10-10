@@ -319,4 +319,6 @@ export interface CodeDeckApi {
   ): Promise<InvokeContract[C]['result']>;
   send<C extends SendChannel>(channel: C, ...args: SendContract[C]): void;
   on<C extends EventChannel>(channel: C, listener: (...args: EventContract[C]) => void): () => void;
+  /** The path of a file dropped from the OS ('' when it has none). */
+  pathForFile(file: File): string;
 }

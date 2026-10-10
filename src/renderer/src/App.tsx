@@ -25,6 +25,7 @@ import {
   disposeTerminal,
   focusTerminal,
   pasteInto,
+  requestFind,
   setAppActionHandler,
   setPlatform,
 } from './terminal/registry';
@@ -246,6 +247,8 @@ function Shell() {
           return toggleRightPanel();
         case 'popout':
           return activeId && void popout(activeId);
+        case 'find':
+          return activeId && requestFind(activeId);
       }
       if (tabs.length === 0) return;
       const idx = tabs.findIndex((s) => s.id === activeId);
@@ -356,6 +359,7 @@ function Shell() {
       if (active.location === 'embedded') {
         out.push(
           cmd('popout', t('pane.popout'), () => runAction('popout'), 'popout'),
+          cmd('find', t('find.open'), () => runAction('find'), 'find'),
           cmd('external', t('session.openExternal'), () =>
             setDialog({ kind: 'openExternal', sessionId: active.id }),
           ),

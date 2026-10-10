@@ -34,7 +34,8 @@ export type AppAction =
   | 'nextPane'
   | 'prevPane'
   | 'toggleRightPanel'
-  | 'popout';
+  | 'popout'
+  | 'find';
 
 export type TerminalKeyDecision =
   | { kind: 'pass' }
@@ -74,6 +75,7 @@ const TABLE: { action: AppAction; keys: string[]; macShift: boolean }[] = [
   { action: 'toggleRightPanel', keys: ['b'], macShift: false },
   { action: 'settings', keys: [',', '<'], macShift: false },
   { action: 'popout', keys: ['o'], macShift: true },
+  { action: 'find', keys: ['f'], macShift: false },
 ];
 
 /** Windows/Linux: Ctrl+Shift+<key>. Shift is always held, so pick distinct keys where macOS uses Shift. */
@@ -90,6 +92,7 @@ const WIN_KEYS: Partial<Record<AppAction, string[]>> = {
   toggleRightPanel: ['b'],
   settings: [',', '<'],
   popout: ['o'],
+  find: ['f'],
 };
 
 export function appActionFor(ev: KeyLike, platform: Platform, inTerminal = true): AppAction | null {
