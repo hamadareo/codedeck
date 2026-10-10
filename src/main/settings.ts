@@ -3,6 +3,7 @@ import path from 'node:path';
 import type { Settings } from '@shared/types';
 import { isLayout } from '@shared/layout';
 import { DEFAULT_NOTIFY, NOTIFY_KINDS, type NotifySettings } from '@shared/notify';
+import { DEFAULT_DISCORD, normalizeDiscord } from '@shared/discord';
 
 export type { Settings };
 
@@ -18,6 +19,7 @@ export const DEFAULT_SETTINGS: Settings = {
   popouts: [],
   sidebarWidth: 288,
   notifications: DEFAULT_NOTIFY,
+  discord: DEFAULT_DISCORD,
 };
 
 function normalizeNotify(raw: Partial<NotifySettings> | undefined): NotifySettings {
@@ -61,6 +63,7 @@ export function normalizeSettings(raw: Partial<Settings> | null | undefined): Se
     popouts: Array.isArray(r.popouts) ? r.popouts.filter((x): x is string => typeof x === 'string') : [],
     sidebarWidth: clamp(r.sidebarWidth, 200, 480, d.sidebarWidth),
     notifications: normalizeNotify(r.notifications),
+    discord: normalizeDiscord(r.discord),
   };
 }
 

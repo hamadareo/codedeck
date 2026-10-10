@@ -38,6 +38,7 @@ import {
 } from './ui/dialogs';
 import { Button, ConfirmDialog } from './ui/Modal';
 import { NotificationBanners } from './ui/usage';
+import { DiscordDialog, RemoteInputToasts } from './ui/DiscordDialog';
 
 type Dialog =
   | { kind: 'addProfile' }
@@ -51,6 +52,7 @@ type Dialog =
   | { kind: 'rename'; session: Session }
   | { kind: 'palette' }
   | { kind: 'settings' }
+  | { kind: 'discord' }
   | null;
 
 const CLAUDE_SETUP_URL = 'https://code.claude.com/docs/en/setup';
@@ -357,6 +359,7 @@ function Shell() {
       run,
     });
     out.push(
+      setting('discord', t('discord.open'), () => setDialog({ kind: 'discord' })),
       setting(
         'open',
         t('cmd.settings'),
@@ -577,11 +580,20 @@ function Shell() {
       </div>
 
       <NotificationBanners />
+      <RemoteInputToasts sessions={sessions} onSelect={selectSession} />
+      {dialog?.kind === 'discord' && settings && (
+        <DiscordDialog settings={settings.discord} onClose={() => setDialog(null)} />
+      )}
       {dialog?.kind === 'palette' && (
         <CommandPalette entries={paletteEntries} onClose={() => setDialog(null)} />
       )}
       {dialog?.kind === 'settings' && settings && (
-        <SettingsDialog settings={settings} platform={platform} onClose={() => setDialog(null)} />
+        <SettingsDialog
+          settings={settings}
+          platform={platform}
+          onClose={() => setDialog(null)}
+          onOpenDiscord={() => setDialog({ kind: 'discord' })}
+        />
       )}
       {dialog?.kind === 'addProfile' && (
         <AddProfileDialog

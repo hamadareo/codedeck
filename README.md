@@ -41,6 +41,16 @@ npm run pack        # 署名なしでパッケージ化(release/)
 
 CodeDeck は、claude を起動するときに `--settings` で状態通知用のフックを追加します(プロファイルの設定ファイルは書き換えません)。フックは「作業中」「完了」などのイベント名だけを `userData/status/` に書き、プロンプトや出力は書きません。
 
+## Discord 連携
+
+⚙ 設定 →「Discord 連携の設定…」で、自分の Discord サーバーと Bot を登録すると、スマホから `/sessions`・`/send`・`/status`・`/usage`(設定で `/new`・`/stop` も)と承認ボタンが使えます。PC で CodeDeck が動いている間だけ有効です。
+
+- 許可したユーザー ID 以外の操作は無視し、`userData/logs/codedeck.log` に記録します
+- 危険な操作(削除、git push など)は Discord 上でも追加の確認が必要です。出力に含まれる API キーなどは伏せて送ります
+- Bot のトークンは OS のキーチェーンで暗号化して保存します(平文では保存しません)
+
+手順の詳細は [docs/phase4-report.md](docs/phase4-report.md) を参照。
+
 ## 署名なしのビルドを実行するとき
 
 - **Windows**: SmartScreen の「Windows によって PC が保護されました」が出たら、「詳細情報」→「実行」を選びます。

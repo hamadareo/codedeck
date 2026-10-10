@@ -1,4 +1,5 @@
 import type { NotifySettings } from './notify';
+import type { DiscordSettings } from './discord';
 
 export type ProfileKind = 'personal' | 'team' | 'other';
 export type AuthStatus = 'unknown' | 'connected' | 'logged_out';
@@ -93,6 +94,8 @@ export interface Settings {
   popouts: string[];
   sidebarWidth: number;
   notifications: NotifySettings;
+  /** Non-secret Discord settings; the bot token lives in the OS keychain (safeStorage). */
+  discord: DiscordSettings;
 }
 
 export interface EnvInfo {

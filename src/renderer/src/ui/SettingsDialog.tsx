@@ -22,7 +22,12 @@ const SHORTCUTS: { action: AppAction; key: string }[] = [
 ];
 
 /** Settings (§4): theme, text sizes, terminal font, language, external terminal. Changes apply at once. */
-export function SettingsDialog(props: { settings: Settings; platform: Platform; onClose(): void }) {
+export function SettingsDialog(props: {
+  settings: Settings;
+  platform: Platform;
+  onClose(): void;
+  onOpenDiscord(): void;
+}) {
   const t = useT();
   const s = props.settings;
   const [font, setFont] = useState(s.terminalFontFamily);
@@ -149,6 +154,11 @@ export function SettingsDialog(props: { settings: Settings; platform: Platform; 
           )}
         </select>
       </Field>
+
+      <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">{t('discord.title')}</h3>
+      <Button onClick={props.onOpenDiscord} data-testid="open-discord">
+        {t('discord.open')}…
+      </Button>
 
       <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">
         {t('settings.notifications')}

@@ -50,6 +50,7 @@ export async function launch(
       // Record notifications without putting real toasts on the desktop; recompute usage often.
       CODEDECK_NO_OS_NOTIFY: '1',
       CODEDECK_USAGE_INTERVAL_MS: '1000',
+      CODEDECK_DISCORD_OFFLINE: '1',
     } as Record<string, string>,
   });
   // Restored pop-out windows open right after the main one and may come first: pick the main window.

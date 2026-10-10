@@ -11,6 +11,7 @@ import { shouldResume } from './sessions/transcript';
 import { StatusWatcher } from './sessions/statusWatcher';
 import { STATUS_FILE_ENV, writeHookSettings } from './sessions/hooks';
 import { NoteRepo } from './projects/noteRepo';
+import { ScreenMirror } from './discord/screenMirror';
 import { nextActivity, type ActivityEvent } from '@shared/status';
 import { detectLimitMessage, type LimitMessage } from '@shared/usage';
 
@@ -61,6 +62,8 @@ export class CodeDeckService {
   readonly sessions: SessionRepo;
   readonly ptys: PtyManager;
   readonly notes: NoteRepo;
+  /** Clean screen text per session for Discord (§6); fed with the same output as the terminal. */
+  readonly screens = new ScreenMirror();
   private readonly home: string;
   private readonly loginWatchers = new Map<string, NodeJS.Timeout>();
   private readonly activities = new Map<string, Activity>();
@@ -75,6 +78,7 @@ export class CodeDeckService {
     this.ptys = new PtyManager({
       onData: (id, data, end) => {
         deps.ptyEvents.onData(id, data, end);
+        this.screens.write(id, data);
         this.observeOutput(id, data);
       },
       onState: (id, state, code) => {
@@ -142,6 +146,24 @@ export class CodeDeckService {
   input(id: string, data: string): void {
     this.ptys.write(id, data);
     if (this.activities.get(id) === 'approval') this.applyActivity(id, 'input');
+  }
+
+  resize(id: string, cols: number, rows: number): void {
+    this.ptys.resize(id, cols, rows);
+    this.screens.resize(id, cols, rows);
+  }
+
+  /**
+   * Submit an instruction as if typed (Discord /send, /new). The text goes in as a
+   * bracketed paste — multi-line text stays one message — and Enter follows separately,
+   * so claude does not take it as part of the paste.
+   */
+  async submitText(id: string, text: string): Promise<void> {
+    if (!this.ptys.isRunning(id)) throw new Error('session.notRunning');
+    const clean = text.replace(/\r\n?/g, '\n');
+    this.input(id, clean.includes('\n') ? `\x1b[200~${clean}\x1b[201~` : clean);
+    await new Promise((r) => setTimeout(r, 150));
+    this.input(id, '\r');
   }
 
   /** The session is on screen: a finished turn has been seen. */
@@ -293,6 +315,7 @@ export class CodeDeckService {
 
   removeSession(id: string): void {
     this.ptys.stop(id);
+    this.screens.dispose(id);
     this.status?.remove(id);
     this.sessions.remove(id);
     this.deps.onChange('sessions');
@@ -331,6 +354,7 @@ export class CodeDeckService {
       extraEnv: statusFile ? { [STATUS_FILE_ENV]: statusFile } : undefined,
     });
     if (this.ptys.state(id) === 'exited') this.ptys.note(id, '\r\n\x1b[2m────────\x1b[0m\r\n');
+    this.screens.start(id, Math.max(cols, 2), Math.max(rows, 1));
     this.ptys.start(id, spec, cwd, cols, rows);
     if (!s.started) {
       this.sessions.patch(id, { started: true });
@@ -377,6 +401,7 @@ export class CodeDeckService {
   shutdown(): void {
     for (const id of [...this.loginWatchers.keys()]) this.stopLoginWatch(id);
     this.ptys.stopAll();
+    this.screens.disposeAll();
     this.status?.close();
   }
 }

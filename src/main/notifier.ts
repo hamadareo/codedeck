@@ -40,7 +40,8 @@ export class Notifier {
     // Session alerts only matter when the user is elsewhere; usage alerts always show.
     const os = s.os && (!session || !this.deps.appFocused());
     const inApp = s.inApp && !session;
-    if (!os && !inApp) return null;
+    // Usage alerts are also forwarded to Discord (§7), even when not shown locally.
+    if (!os && !inApp && session) return null;
     const record: NotificationRecord = {
       id: randomUUID(),
       kind,
@@ -51,7 +52,7 @@ export class Notifier {
       sessionId: ref.sessionId ?? null,
       shown: { os, inApp },
     };
-    this.history.push(record);
+    if (os || inApp) this.history.push(record);
     if (this.history.length > HISTORY) this.history.shift();
     if (os) this.deps.showOs(title, body, () => this.deps.onClick(record));
     if (inApp) this.deps.showInApp(record);

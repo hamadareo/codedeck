@@ -68,6 +68,13 @@ const MIGRATIONS: string[] = [
     PRIMARY KEY (profile_id, window, window_key, threshold)
   );
   `,
+  // v4: one Discord thread per session (§6)
+  `
+  CREATE TABLE discord_threads (
+    session_id TEXT PRIMARY KEY REFERENCES sessions(id) ON DELETE CASCADE,
+    thread_id TEXT NOT NULL
+  );
+  `,
 ];
 
 export type Db = DatabaseSync;

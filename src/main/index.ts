@@ -1,5 +1,13 @@
+import os from 'node:os';
 import path from 'node:path';
-import { app, BrowserWindow, nativeTheme, Notification } from 'electron';
+import { app, BrowserWindow, nativeTheme, Notification, powerSaveBlocker, safeStorage } from 'electron';
+import type { DiscordInfo } from '@shared/ipc';
+import { displayStatus } from '@shared/status';
+import { Logger } from './log';
+import { DiscordController, gitDiffSummary, ThreadRepo } from './discord/controller';
+import { DiscordJsTransport } from './discord/discordJsTransport';
+import { OfflineTransport } from './discord/transport';
+import { SecretStore } from './discord/secretStore';
 import { openDatabase } from './db/database';
 import { CodeDeckService } from './service';
 import { SettingsStore } from './settings';
@@ -58,11 +66,16 @@ if (!gotLock) {
     });
 
     let svc: CodeDeckService | null = null;
+    let discord: DiscordController | null = null;
+    const log = new Logger(path.join(userData, 'logs'));
     const tray = new AppTray({ show: showMain, quit: () => app.quit() }, () => settings.get().locale);
     const usage = new UsageService({
       db,
       profiles: () => svc?.profiles.list() ?? [],
-      notify: (kind, vars, profileId) => notifier.notify(kind, vars, { profileId }),
+      notify: (kind, vars, profileId) => {
+        const r = notifier.notify(kind, vars, { profileId });
+        if (r) discord?.bridge.onNotification(r);
+      },
       onChanged: (list) => {
         wm.broadcast('usage:changed', list);
         tray.update(list, svc?.profiles.list() ?? []);
@@ -90,6 +103,7 @@ if (!gotLock) {
         if (activity === 'error') notifier.notify('sessionError', vars, { sessionId: id });
         // A finished turn has written new usage to its transcript.
         if (activity === 'done' || activity === 'error') usage.scheduleRefresh(s.profileId);
+        discord?.bridge.onActivity(id, activity, prev);
       },
       onPlan: (profileId, sub) => usage.setDetectedPlan(profileId, sub),
       onLimit: (_sessionId, profileId, msg) => usage.onLimitMessage(profileId, msg),
@@ -98,7 +112,46 @@ if (!gotLock) {
         if (what === 'profiles') usage.refreshAll();
       },
     });
-    registerIpc(svc, settings, wm, usage, notifier);
+    const core = svc;
+    const discordInfo = (): DiscordInfo => ({
+      status: discord?.bridge.getStatus() ?? { state: 'off' },
+      hasToken: discord?.hasToken() ?? false,
+      keychainAvailable: discord?.keychainAvailable() ?? false,
+    });
+    discord = new DiscordController(
+      // E2E: never contact Discord (a test token must not leave the machine).
+      process.env.CODEDECK_DISCORD_OFFLINE ? new OfflineTransport() : new DiscordJsTransport(),
+      new SecretStore(userData, safeStorage),
+      () => settings.get(),
+      {
+        sessions: () => core.sessions.list(),
+        profiles: () => core.profiles.list(),
+        projects: () => core.projects.list(),
+        homeDir: () => process.env.CODEDECK_HOME || os.homedir(),
+        statusOf: (id) => {
+          const s = core.sessions.get(id);
+          return s ? displayStatus(s, core.ptys.state(id), core.activity(id)) : 'idle';
+        },
+        isRunning: (id) => core.ptys.isRunning(id),
+        screenLines: (id, max) => core.screens.lines(id, max),
+        createSession: (input) => core.createSession(input),
+        startPty: (id) => core.startPty(id, 120, 32),
+        submitText: (id, text) => core.submitText(id, text),
+        input: (id, data) => core.input(id, data),
+        usage: () => usage.list(),
+        diffSummary: gitDiffSummary,
+        threads: new ThreadRepo(db),
+        log: (message, fields) => log.write('discord', message, fields),
+        onRemoteInput: (sessionId, user, kind, preview) =>
+          wm.broadcast('remote:input', { sessionId, user, kind, preview, at: Date.now() }),
+      },
+      () => wm.broadcast('discord:status', discordInfo()),
+      {
+        start: () => powerSaveBlocker.start('prevent-app-suspension'),
+        stop: (id) => powerSaveBlocker.stop(id),
+      },
+    );
+    registerIpc(svc, settings, wm, usage, notifier, discord, discordInfo);
     wm.applyTheme(settings.get().theme);
     nativeTheme.on('updated', () => wm.applyTheme(settings.get().theme));
     wm.createMain();
@@ -116,9 +169,11 @@ if (!gotLock) {
 
     void svc.checkAllAuth();
     usage.start(Number(process.env.CODEDECK_USAGE_INTERVAL_MS) || 60_000);
+    void discord.apply();
 
     const shutdown = () => {
       usage.stop();
+      void discord?.shutdown();
       tray.destroy();
       svc?.shutdown();
     };

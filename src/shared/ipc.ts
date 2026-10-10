@@ -76,6 +76,29 @@ export interface InvokeContract {
     result: ProfileUsage | undefined;
   };
   'notify:history': { args: []; result: NotificationRecord[] };
+  'discord:info': { args: []; result: DiscordInfo };
+  /** Stores the bot token in the OS keychain. The token is never sent back. */
+  'discord:setToken': { args: [token: string]; result: DiscordInfo };
+  'discord:clearToken': { args: []; result: DiscordInfo };
+  'discord:reconnect': { args: []; result: DiscordInfo };
+}
+
+export interface DiscordInfo {
+  status:
+    | { state: 'off' }
+    | { state: 'connecting' }
+    | { state: 'connected'; botTag: string }
+    | { state: 'error'; error: string };
+  hasToken: boolean;
+  keychainAvailable: boolean;
+}
+
+export interface RemoteInput {
+  sessionId: string;
+  user: string;
+  kind: 'send' | 'approve' | 'deny' | 'stop' | 'new';
+  preview: string;
+  at: number;
 }
 
 /** Fire-and-forget channels (ipcRenderer.send ↔ ipcMain.on). */
@@ -102,6 +125,9 @@ export interface EventContract {
   'notify:show': [record: NotificationRecord];
   /** An OS notification was clicked: bring this session on screen. */
   'app:focusSession': [sessionId: string];
+  'discord:status': [info: DiscordInfo];
+  /** Input that came from Discord (§6: shown as "from Discord" in the app). */
+  'remote:input': [input: RemoteInput];
 }
 
 export type InvokeChannel = keyof InvokeContract;
@@ -145,6 +171,10 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'usage:refresh',
   'usage:setConfig',
   'notify:history',
+  'discord:info',
+  'discord:setToken',
+  'discord:clearToken',
+  'discord:reconnect',
 ];
 export const SEND_CHANNELS: SendChannel[] = [
   'pty:input',
@@ -163,6 +193,8 @@ export const EVENT_CHANNELS: EventChannel[] = [
   'usage:changed',
   'notify:show',
   'app:focusSession',
+  'discord:status',
+  'remote:input',
 ];
 
 /** The API exposed on window.codedeck by the preload script. */

@@ -7,6 +7,8 @@ import type { SettingsStore } from './settings';
 import type { WindowManager } from './windows';
 import type { UsageService } from './usage/usageService';
 import type { Notifier } from './notifier';
+import type { DiscordController } from './discord/controller';
+import type { DiscordInfo } from '@shared/ipc';
 import { claudeVersion, resolveClaude } from './platform/claude';
 
 type Handler<C extends InvokeChannel> = (
@@ -37,7 +39,22 @@ export function registerIpc(
   wm: WindowManager,
   usage: UsageService,
   notifier: Notifier,
+  discord: DiscordController,
+  discordInfo: () => DiscordInfo,
 ): void {
+  handle('discord:info', () => discordInfo());
+  handle('discord:setToken', async (token) => {
+    await discord.setToken(token);
+    return discordInfo();
+  });
+  handle('discord:clearToken', async () => {
+    await discord.clearToken();
+    return discordInfo();
+  });
+  handle('discord:reconnect', async () => {
+    await discord.apply(true);
+    return discordInfo();
+  });
   handle('usage:list', () => usage.list());
   handle('usage:refresh', () => usage.refreshAll());
   handle('usage:setConfig', (profileId, patch) => usage.setConfig(profileId, patch));
@@ -60,6 +77,7 @@ export function registerIpc(
     const next = settings.set(patch);
     if (next.theme !== before.theme) wm.applyTheme(next.theme);
     wm.broadcast('settings:changed', next);
+    if (patch.discord || patch.locale) void discord.apply();
     return next;
   });
 
@@ -109,7 +127,7 @@ export function registerIpc(
   handle('pty:snapshot', (id) => svc.ptys.snapshot(id));
   handle('activity:list', () => svc.allActivities());
   on('pty:input', (id, data) => svc.input(id, data));
-  on('pty:resize', (id, cols, rows) => svc.ptys.resize(id, cols, rows));
+  on('pty:resize', (id, cols, rows) => svc.resize(id, cols, rows));
   on('session:seen', (id) => svc.seen(id));
 
   handle('window:popout', (id) => {

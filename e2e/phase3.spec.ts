@@ -5,7 +5,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { addProfile, launch, makeSandbox, root, tabStatus, typeLine } from './helpers';
+import { addProfile, expectTerminal, launch, makeSandbox, root, tabStatus, typeLine } from './helpers';
 
 const sb = makeSandbox('phase3');
 test.afterAll(() => sb.cleanup());
@@ -81,6 +81,8 @@ test('threshold alert fires once, survives restarts without repeating; limit mes
 
   // "Limit reached" in the terminal: the session shows it, and an alert is sent once.
   await page.getByTestId('session-tab').first().click();
+  // The session was just resumed by the restart: wait until claude is ready for keys.
+  await expectTerminal(page, /nested=no color=truecolor/);
   await typeLine(page, 'limit');
   await expect(tabStatus(page, 0)).toHaveAttribute('data-status', 'limit', { timeout: 20_000 });
   await expect(tabStatus(page, 0)).toContainText('上限到達');
