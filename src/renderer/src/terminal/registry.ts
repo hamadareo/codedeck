@@ -69,6 +69,29 @@ export function applyTerminalAppearance(next: typeof appearance): void {
   }
 }
 
+let gpu: boolean | undefined;
+
+/**
+ * True when WebGL runs on a real GPU. Without one (VMs, remote desktops, CI runners)
+ * Chromium emulates WebGL in software (SwiftShader), which is slower than the DOM renderer.
+ */
+export function hardwareWebgl(): boolean {
+  if (gpu !== undefined) return gpu;
+  try {
+    const gl = document.createElement('canvas').getContext('webgl2');
+    if (!gl) return (gpu = false);
+    const info = gl.getExtension('WEBGL_debug_renderer_info');
+    const renderer = String(
+      info ? gl.getParameter(info.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER),
+    );
+    gl.getExtension('WEBGL_lose_context')?.loseContext();
+    gpu = !/swiftshader|llvmpipe|software|microsoft basic render/i.test(renderer);
+  } catch {
+    gpu = false;
+  }
+  return gpu;
+}
+
 export function getTerminal(id: string): Entry {
   const existing = entries.get(id);
   if (existing) return existing;
@@ -95,13 +118,15 @@ export function getTerminal(id: string): Entry {
   term.loadAddon(new WebLinksAddon((_e, uri) => api.send('link:open', uri)));
   term.open(host);
   // GPU rendering keeps typing responsive with many busy sessions (§4). Falls back to the
-  // DOM renderer when WebGL is unavailable or the GPU context is lost.
-  try {
-    const webgl = new WebglAddon();
-    webgl.onContextLoss(() => webgl.dispose());
-    term.loadAddon(webgl);
-  } catch {
-    // no WebGL: keep the default renderer
+  // DOM renderer when WebGL is unavailable, emulated in software, or the context is lost.
+  if (hardwareWebgl()) {
+    try {
+      const webgl = new WebglAddon();
+      webgl.onContextLoss(() => webgl.dispose());
+      term.loadAddon(webgl);
+    } catch {
+      // no WebGL: keep the default renderer
+    }
   }
 
   term.attachCustomKeyEventHandler((ev) => {

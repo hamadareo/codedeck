@@ -74,12 +74,13 @@ process.stdin.on('data', (d) => {
       return;
     }
     if (typed === 'spam') {
-      // Heavy output for the performance test: ~150 KB/s of colored lines for 8 seconds.
+      // Heavy output for the performance test: ~30 KB/s of colored lines for 8 seconds
+      // (well above claude's own streaming rate), in many small writes.
       const until = Date.now() + 8000;
       let n = 0;
       const timer = setInterval(() => {
         let chunk = '';
-        for (let i = 0; i < 30; i++)
+        for (let i = 0; i < 6; i++)
           chunk += `\x1b[3${n % 7}m${String(++n).padStart(6, '0')} ${'lorem ipsum dolor sit amet '.repeat(3)}\x1b[0m\r\n`;
         process.stdout.write(chunk);
         if (Date.now() > until) {

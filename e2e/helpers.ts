@@ -175,6 +175,8 @@ export async function typeLine(page: Page, text: string) {
   await expect
     .poll(() => page.evaluate(() => !!document.activeElement?.closest('[data-testid^="terminal-"]')))
     .toBe(true);
+  // Focus can land before the PTY has drawn its prompt on a slow runner.
+  await page.waitForTimeout(150);
   await page.keyboard.type(text);
   await page.keyboard.press('Enter');
 }
