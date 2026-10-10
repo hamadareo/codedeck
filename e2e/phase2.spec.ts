@@ -139,8 +139,11 @@ test('panes, palette, theme, notes, pop-out, and restore', async () => {
   const pop = await popoutPromise;
   await expect(pop.getByTestId('popout')).toBeVisible();
   await expect.poll(() => focusedTerminalText(pop), { timeout: 20_000 }).toMatch(/FAKE-CLAUDE saved/);
-  await pop.keyboard.type('from popout');
-  await expect.poll(() => focusedTerminalText(pop)).toMatch(/from popout/);
+  // Input in the pop-out reaches the session: a second turn finishes there.
+  await typeLine(pop, 'pp');
+  await expect
+    .poll(() => focusedTerminalText(pop), { timeout: 20_000 })
+    .toMatch(/FAKE-CLAUDE saved[\s\S]*FAKE-CLAUDE saved/);
   await expect(page.getByText('別ウィンドウで表示中').first()).toBeVisible();
 
   // Restart with the pop-out still open: layout, theme, notes and the window come back.
