@@ -80,11 +80,12 @@ test('panes, palette, theme, notes, pop-out, and restore', async () => {
   await page.getByTestId('session-start').click();
   await expect(page.locator('[data-testid="pane"][data-focused="true"]')).toContainText('my project #1');
   await expectTerminal(page, /hooks=yes/);
-  await typeLine(page, 'in the right pane');
+  // Short input: a narrow CI window must not wrap it (ConPTY may repaint a wrapped line mid-typing).
+  await typeLine(page, 'rp1');
   await expectTerminal(page, /FAKE-CLAUDE saved/);
   const panes = page.getByTestId('pane');
   await expect(panes.nth(0).locator('.xterm-rows')).toContainText('FAKE-CLAUDE cfg=');
-  await expect(panes.nth(1).locator('.xterm-rows')).toContainText('in the right pane');
+  await expect(panes.nth(1).locator('.xterm-rows')).toContainText('FAKE-CLAUDE saved');
 
   // Maximize the focused pane and restore it.
   await page.keyboard.press(isWin ? 'Control+Shift+Enter' : 'Meta+Shift+Enter');
@@ -137,7 +138,7 @@ test('panes, palette, theme, notes, pop-out, and restore', async () => {
   await page.locator('[data-testid="pane"][data-focused="true"]').getByTestId('pane-popout').click();
   const pop = await popoutPromise;
   await expect(pop.getByTestId('popout')).toBeVisible();
-  await expect.poll(() => focusedTerminalText(pop), { timeout: 20_000 }).toMatch(/in the right pane/);
+  await expect.poll(() => focusedTerminalText(pop), { timeout: 20_000 }).toMatch(/FAKE-CLAUDE saved/);
   await pop.keyboard.type('from popout');
   await expect.poll(() => focusedTerminalText(pop)).toMatch(/from popout/);
   await expect(page.getByText('別ウィンドウで表示中').first()).toBeVisible();
