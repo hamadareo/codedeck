@@ -8,6 +8,10 @@ import { ProjectRepo } from './projects/projectRepo';
 import { SessionRepo } from './sessions/sessionRepo';
 import { PtyManager, type PtyEvents } from './sessions/ptyManager';
 import { shouldResume } from './sessions/transcript';
+import { StatusWatcher } from './sessions/statusWatcher';
+import { STATUS_FILE_ENV, writeHookSettings } from './sessions/hooks';
+import { NoteRepo } from './projects/noteRepo';
+import { nextActivity, type ActivityEvent } from '@shared/status';
 import { authStatus, buildSpawnSpec, resolveClaude, sessionArgs } from './platform/claude';
 import { defaultProfileDir } from './platform/paths';
 import { claudeEnv } from './platform/env';
@@ -15,6 +19,7 @@ import { launchExternal, resolveCommand } from './platform/externalTerminal';
 import type { SettingsStore } from './settings';
 import { DEFAULT_COLORS, validateProfileName } from '@shared/profileRules';
 import type {
+  Activity,
   NewProfileInput,
   NewProjectInput,
   NewSessionInput,
@@ -30,6 +35,9 @@ export interface ServiceDeps {
   settings: SettingsStore;
   ptyEvents: PtyEvents;
   onChange(kind: ChangeKind): void;
+  onActivity?(sessionId: string, activity: Activity): void;
+  /** Where hook status files and the hook settings file live (userData). Omit to run without hooks. */
+  stateDir?: string;
   home?: string;
 }
 
@@ -42,15 +50,68 @@ export class CodeDeckService {
   readonly projects: ProjectRepo;
   readonly sessions: SessionRepo;
   readonly ptys: PtyManager;
+  readonly notes: NoteRepo;
   private readonly home: string;
   private readonly loginWatchers = new Map<string, NodeJS.Timeout>();
+  private readonly activities = new Map<string, Activity>();
+  private readonly status: StatusWatcher | null;
+  private readonly hookSettingsFile: string | null;
 
   constructor(private readonly deps: ServiceDeps) {
     this.profiles = new ProfileRepo(deps.db);
     this.projects = new ProjectRepo(deps.db);
     this.sessions = new SessionRepo(deps.db);
-    this.ptys = new PtyManager(deps.ptyEvents);
+    this.notes = new NoteRepo(deps.db);
+    this.ptys = new PtyManager({
+      onData: deps.ptyEvents.onData,
+      onState: (id, state, code) => {
+        if (state !== 'running') {
+          this.status?.end(id);
+          this.activities.delete(id);
+        }
+        deps.ptyEvents.onState(id, state, code);
+      },
+    });
     this.home = deps.home ?? os.homedir();
+    if (deps.stateDir) {
+      this.status = new StatusWatcher(path.join(deps.stateDir, 'status'), (id, word) =>
+        this.applyActivity(id, word),
+      );
+      this.hookSettingsFile = writeHookSettings(deps.stateDir);
+    } else {
+      this.status = null;
+      this.hookSettingsFile = null;
+    }
+  }
+
+  // ---------- activity (session status via hooks) ----------
+
+  activity(id: string): Activity {
+    return this.activities.get(id) ?? 'unknown';
+  }
+
+  allActivities(): Record<string, Activity> {
+    return Object.fromEntries(this.activities);
+  }
+
+  applyActivity(id: string, ev: ActivityEvent): void {
+    if (!this.ptys.isRunning(id)) return;
+    const prev = this.activity(id);
+    const next = nextActivity(prev, ev);
+    if (next === prev) return;
+    this.activities.set(id, next);
+    this.deps.onActivity?.(id, next);
+  }
+
+  /** Keystrokes from the user. Answering an approval prompt moves the session back to "working". */
+  input(id: string, data: string): void {
+    this.ptys.write(id, data);
+    if (this.activities.get(id) === 'approval') this.applyActivity(id, 'input');
+  }
+
+  /** The session is on screen: a finished turn has been seen. */
+  seen(id: string): void {
+    if (this.activities.get(id) === 'done') this.applyActivity(id, 'seen');
   }
 
   // ---------- profiles ----------
@@ -196,12 +257,25 @@ export class CodeDeckService {
 
   removeSession(id: string): void {
     this.ptys.stop(id);
+    this.status?.remove(id);
     this.sessions.remove(id);
     this.deps.onChange('sessions');
   }
 
-  private launchArgs(s: Session, p: Profile): string[] {
-    return sessionArgs(s.id, shouldResume(p.configDir, s.id));
+  renameSession(id: string, title: string): Session {
+    const t = title.trim().slice(0, 120);
+    if (!t) throw new Error('session.error.titleRequired');
+    const s = this.sessions.patch(id, { title: t });
+    this.deps.onChange('sessions');
+    return s;
+  }
+
+  private launchArgs(s: Session, p: Profile, withHooks: boolean): string[] {
+    return sessionArgs(
+      s.id,
+      shouldResume(p.configDir, s.id),
+      withHooks ? (this.hookSettingsFile ?? undefined) : undefined,
+    );
   }
 
   startPty(id: string, cols: number, rows: number): void {
@@ -213,7 +287,14 @@ export class CodeDeckService {
     const claudePath = resolveClaude();
     if (!claudePath) throw new Error('claude.notFound');
     const cwd = fs.existsSync(s.cwd) ? s.cwd : this.home;
-    const spec = buildSpawnSpec({ claudePath, args: this.launchArgs(s, p), configDir: p.configDir });
+    const statusFile = this.status?.begin(id);
+    const spec = buildSpawnSpec({
+      claudePath,
+      args: this.launchArgs(s, p, !!statusFile),
+      configDir: p.configDir,
+      extraEnv: statusFile ? { [STATUS_FILE_ENV]: statusFile } : undefined,
+    });
+    if (this.ptys.state(id) === 'exited') this.ptys.note(id, '\r\n\x1b[2m────────\x1b[0m\r\n');
     this.ptys.start(id, spec, cwd, cols, rows);
     if (!s.started) {
       this.sessions.patch(id, { started: true });
@@ -231,7 +312,7 @@ export class CodeDeckService {
     const claudePath = resolveClaude();
     if (!claudePath) throw new Error('claude.notFound');
     this.ptys.stop(id);
-    const launch = { claudePath, configDir: p.configDir, cwd: s.cwd, args: this.launchArgs(s, p) };
+    const launch = { claudePath, configDir: p.configDir, cwd: s.cwd, args: this.launchArgs(s, p, false) };
     const cmd = resolveCommand(launch, this.deps.settings.get().externalTerminal);
     await launchExternal(cmd, claudeEnv(process.env, p.configDir));
     const next = this.sessions.patch(id, { location: 'external', started: true });
@@ -246,8 +327,20 @@ export class CodeDeckService {
     return next;
   }
 
+  // ---------- notes ----------
+
+  getNote(projectId: string): string {
+    return this.notes.get(projectId);
+  }
+
+  setNote(projectId: string, body: string): void {
+    if (!this.projects.get(projectId)) throw new Error(`project not found: ${projectId}`);
+    this.notes.set(projectId, body);
+  }
+
   shutdown(): void {
     for (const id of [...this.loginWatchers.keys()]) this.stopLoginWatch(id);
     this.ptys.stopAll();
+    this.status?.close();
   }
 }

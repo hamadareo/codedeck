@@ -1,5 +1,6 @@
-import type { AuthStatus, Profile, PtyState, Session } from '@shared/types';
+import type { AuthStatus, Profile, SessionStatus } from '@shared/types';
 import { readableTextColor } from '@shared/profileRules';
+import { STATUS_STYLE } from '@shared/status';
 import { useT } from '../i18n';
 
 /** Profile badge: color + name, shown on every tab and pane (§3-5). */
@@ -36,18 +37,30 @@ export function AuthStatusLabel({ status }: { status: AuthStatus }) {
   );
 }
 
-/** Session state with icon + text, never color alone (§4). Phase 2 adds waiting/approval/limit states. */
-export function SessionStateLabel({ session, state }: { session: Session; state: PtyState }) {
+const TONE: Record<string, string> = {
+  muted: 'text-muted',
+  ok: 'text-ok',
+  accent: 'text-accent',
+  warn: 'text-warn',
+  danger: 'text-danger',
+};
+
+/** Session status with icon + text, never color alone (§4). `compact` keeps the text for screen readers only. */
+export function SessionStatusLabel({ status, compact }: { status: SessionStatus; compact?: boolean }) {
   const t = useT();
-  const key = session.location === 'external' ? 'external' : state;
-  const icon = { idle: '○', running: '▶', exited: '■', external: '↗' }[key];
-  const color = { idle: 'text-muted', running: 'text-ok', exited: 'text-muted', external: 'text-accent' }[
-    key
-  ];
+  const s = STATUS_STYLE[status];
+  const label = t(`status.${status}`);
   return (
-    <span className={`inline-flex items-center gap-1 text-[11px] ${color}`}>
-      <span aria-hidden>{icon}</span>
-      {t(`session.state.${key}`)}
+    <span
+      className={`inline-flex shrink-0 items-center gap-1 text-[11px] ${TONE[s.tone]}`}
+      data-testid="session-status"
+      data-status={status}
+      title={label}
+    >
+      <span aria-hidden className={status === 'working' ? 'cd-spin' : ''}>
+        {s.icon}
+      </span>
+      <span className={compact ? 'sr-only' : ''}>{label}</span>
     </span>
   );
 }

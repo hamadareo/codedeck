@@ -3,6 +3,7 @@ import {
   appActionFor,
   decideTerminalKey,
   pasteDecision,
+  shortcutLabel,
   SHIFT_ENTER_SEQUENCE,
   type KeyLike,
 } from '@shared/keymap';
@@ -72,6 +73,54 @@ describe('terminal key rules (macOS)', () => {
     expect(decideTerminalKey(k('c', { metaKey: true }), 'mac', true)).toEqual({ kind: 'copy' });
     expect(decideTerminalKey(k('c', { metaKey: true }), 'mac', false)).toEqual({ kind: 'pass' });
     expect(decideTerminalKey(k('v', { metaKey: true }), 'mac', false)).toEqual({ kind: 'paste' });
+  });
+});
+
+describe('Phase 2 shortcuts', () => {
+  const win = (key: string, extra: Partial<KeyLike> = {}) =>
+    k(key, { ctrlKey: true, shiftKey: true, ...extra });
+  const mac = (key: string, extra: Partial<KeyLike> = {}) => k(key, { metaKey: true, ...extra });
+
+  it('command palette: Cmd+K / Cmd+Shift+P on macOS, Ctrl+Shift+K / Ctrl+Shift+P on Windows', () => {
+    expect(appActionFor(mac('k'), 'mac')).toBe('palette');
+    expect(appActionFor(mac('P', { shiftKey: true }), 'mac')).toBe('palette');
+    expect(appActionFor(win('K'), 'other')).toBe('palette');
+    expect(appActionFor(win('P'), 'other')).toBe('palette');
+  });
+
+  it('regression: plain Ctrl+K stays with the CLI in a terminal, opens the palette elsewhere (§4)', () => {
+    expect(appActionFor(k('k', { ctrlKey: true }), 'other', true)).toBeNull();
+    expect(decideTerminalKey(k('k', { ctrlKey: true }), 'other', false)).toEqual({ kind: 'pass' });
+    expect(appActionFor(k('k', { ctrlKey: true }), 'other', false)).toBe('palette');
+    expect(appActionFor(k(',', { ctrlKey: true }), 'other', false)).toBe('settings');
+  });
+
+  it('panes', () => {
+    expect(appActionFor(mac('d'), 'mac')).toBe('splitRight');
+    expect(appActionFor(mac('D', { shiftKey: true }), 'mac')).toBe('splitDown');
+    expect(appActionFor(mac('Enter', { shiftKey: true }), 'mac')).toBe('maximize');
+    expect(appActionFor(mac(']'), 'mac')).toBe('nextPane');
+    expect(appActionFor(mac('W', { shiftKey: true }), 'mac')).toBe('closePane');
+    expect(appActionFor(win('D'), 'other')).toBe('splitRight');
+    expect(appActionFor(win('E'), 'other')).toBe('splitDown');
+    expect(appActionFor(win('Enter'), 'other')).toBe('maximize');
+    // Shift turns "]" into "}" on US and JIS layouts.
+    expect(appActionFor(win('}'), 'other')).toBe('nextPane');
+    expect(appActionFor(win('{'), 'other')).toBe('prevPane');
+    expect(appActionFor(win('X'), 'other')).toBe('closePane');
+    expect(appActionFor(win('<'), 'other')).toBe('settings');
+  });
+
+  it('Shift+Tab and Ctrl+Shift+Tab are never confused', () => {
+    expect(appActionFor(k('Tab', { shiftKey: true }), 'other')).toBeNull();
+    expect(appActionFor(k('Tab', { shiftKey: true }), 'mac')).toBeNull();
+  });
+
+  it('labels', () => {
+    expect(shortcutLabel('palette', 'mac')).toBe('⌘K');
+    expect(shortcutLabel('splitDown', 'mac')).toBe('⇧⌘D');
+    expect(shortcutLabel('palette', 'other')).toBe('Ctrl+Shift+K');
+    expect(shortcutLabel('maximize', 'other')).toBe('Ctrl+Shift+↵');
   });
 });
 

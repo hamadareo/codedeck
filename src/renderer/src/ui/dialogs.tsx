@@ -5,7 +5,7 @@ import {
   needsProfileConfirm,
   validateProfileName,
 } from '@shared/profileRules';
-import type { EnvInfo, Profile, ProfileKind, Project } from '@shared/types';
+import type { EnvInfo, Profile, ProfileKind, Project, Session } from '@shared/types';
 import { api, errorKey } from '../api';
 import { useT } from '../i18n';
 import { Button, ConfirmDialog, Field, Modal, inputCls } from './Modal';
@@ -188,6 +188,191 @@ export function AddProjectDialog(props: {
           testId="project-pin"
         />
       </Field>
+    </Modal>
+  );
+}
+
+/** Edit a profile's look and name (§4: colors are changeable). The config dir never changes. */
+export function EditProfileDialog(props: { profile: Profile; profiles: Profile[]; onClose(): void }) {
+  const t = useT();
+  const p = props.profile;
+  const [name, setName] = useState(p.name);
+  const [kind, setKind] = useState<ProfileKind>(p.kind);
+  const [color, setColor] = useState(p.color);
+  const [icon, setIcon] = useState(p.icon);
+  const [note, setNote] = useState(p.note);
+  const [error, setError] = useState<string | null>(null);
+  const others = props.profiles.filter((x) => x.id !== p.id);
+  const validation = validateProfileName(name, others);
+
+  const submit = async () => {
+    if (validation) return setError(validation);
+    try {
+      await api.invoke('profiles:update', p.id, {
+        name,
+        kind,
+        color,
+        icon: [...icon].slice(0, 2).join(''),
+        note,
+      });
+      props.onClose();
+    } catch (e) {
+      setError(errorKey(e));
+    }
+  };
+
+  return (
+    <Modal
+      title={t('profile.edit.title', { name: p.name })}
+      onClose={props.onClose}
+      testId="edit-profile"
+      footer={
+        <>
+          <Button onClick={props.onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" disabled={!!validation} onClick={submit}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <Field label={t('profile.name')}>
+        <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <fieldset>
+        <legend className="mb-1 text-muted">{t('profile.kind')}</legend>
+        <div className="flex gap-2">
+          {KINDS.map((k) => (
+            <label
+              key={k}
+              className={`flex cursor-pointer items-center gap-2 rounded border px-3 py-1.5 ${
+                kind === k ? 'border-accent bg-panel-2' : 'border-line'
+              }`}
+            >
+              <input
+                type="radio"
+                name="edit-kind"
+                value={k}
+                checked={kind === k}
+                onChange={() => {
+                  // Follow the kind's default color unless the user picked their own.
+                  if (color === DEFAULT_COLORS[kind]) setColor(DEFAULT_COLORS[k]);
+                  setKind(k);
+                }}
+              />
+              {t(`kind.${k}`)}
+            </label>
+          ))}
+        </div>
+      </fieldset>
+      <div className="flex gap-4">
+        <Field label={t('profile.color')}>
+          <input
+            type="color"
+            value={color}
+            onChange={(e) => setColor(e.target.value)}
+            className="h-8 w-16 cursor-pointer rounded border border-line bg-bg"
+            data-testid="profile-color"
+          />
+        </Field>
+        <Field label={t('profile.icon')}>
+          <input className={`${inputCls} w-20`} value={icon} onChange={(e) => setIcon(e.target.value)} />
+        </Field>
+      </div>
+      <Field label={t('profile.note')}>
+        <input className={inputCls} value={note} onChange={(e) => setNote(e.target.value)} />
+      </Field>
+      <Field label={t('profile.configDir')} hint={t('profile.configDirFixed')}>
+        <code className="block break-all rounded bg-bg px-2 py-1 text-xs text-muted">{p.configDir}</code>
+      </Field>
+      {(validation || error) && (
+        <p role="alert" className="text-danger">
+          {t(validation ?? error ?? '')}
+        </p>
+      )}
+    </Modal>
+  );
+}
+
+export function ProjectSettingsDialog(props: { project: Project; profiles: Profile[]; onClose(): void }) {
+  const t = useT();
+  const [name, setName] = useState(props.project.name);
+  const [pin, setPin] = useState(props.project.pinnedProfileId ?? '');
+  const submit = async () => {
+    await api.invoke('projects:update', props.project.id, {
+      name: name.trim() || props.project.name,
+      pinnedProfileId: pin || null,
+    });
+    props.onClose();
+  };
+  return (
+    <Modal
+      title={t('project.edit.title', { name: props.project.name })}
+      onClose={props.onClose}
+      testId="project-settings"
+      footer={
+        <>
+          <Button onClick={props.onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" onClick={submit}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <Field label={t('project.folder')}>
+        <code className="block break-all rounded bg-bg px-2 py-1 text-xs text-muted">
+          {props.project.path}
+        </code>
+      </Field>
+      <Field label={t('project.name')}>
+        <input className={inputCls} value={name} onChange={(e) => setName(e.target.value)} />
+      </Field>
+      <Field label={t('project.pin')} hint={t('project.pinHint')}>
+        <ProfileSelect
+          profiles={props.profiles}
+          value={pin}
+          onChange={setPin}
+          allowNone
+          testId="project-pin"
+        />
+      </Field>
+    </Modal>
+  );
+}
+
+export function RenameSessionDialog(props: { session: Session; onClose(): void }) {
+  const t = useT();
+  const [title, setTitle] = useState(props.session.title);
+  const submit = async () => {
+    if (!title.trim()) return;
+    await api.invoke('sessions:rename', props.session.id, title);
+    props.onClose();
+  };
+  return (
+    <Modal
+      title={t('session.rename.title')}
+      onClose={props.onClose}
+      footer={
+        <>
+          <Button onClick={props.onClose}>{t('common.cancel')}</Button>
+          <Button variant="primary" disabled={!title.trim()} onClick={submit}>
+            {t('common.save')}
+          </Button>
+        </>
+      }
+    >
+      <form
+        onSubmit={(e) => {
+          e.preventDefault();
+          void submit();
+        }}
+      >
+        <input
+          className={inputCls}
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          aria-label={t('session.rename.title')}
+        />
+      </form>
     </Modal>
   );
 }

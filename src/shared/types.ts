@@ -44,6 +44,54 @@ export interface Session {
 
 export type PtyState = 'idle' | 'running' | 'exited';
 
+/** What claude is doing, reported by CodeDeck's hooks (docs/phase2-plan.md). */
+export type Activity = 'unknown' | 'working' | 'waiting' | 'approval' | 'done' | 'error' | 'limit';
+
+/** What the UI shows for a session (§4: running / waiting / approval / done / error / limit). */
+export type SessionStatus =
+  | 'idle'
+  | 'starting'
+  | 'running'
+  | 'working'
+  | 'waiting'
+  | 'approval'
+  | 'done'
+  | 'error'
+  | 'limit'
+  | 'exited'
+  | 'external';
+
+export type ThemeMode = 'system' | 'light' | 'dark';
+export type Locale = 'ja' | 'en';
+
+export type SplitDir = 'row' | 'col';
+export type LayoutNode =
+  | { kind: 'pane'; id: string; sessionId: string | null }
+  | { kind: 'split'; id: string; dir: SplitDir; children: LayoutNode[]; sizes: number[] };
+
+export interface Layout {
+  root: LayoutNode;
+  focusedPaneId: string;
+  maximizedPaneId: string | null;
+}
+
+export type RightPanelTab = 'notes' | 'diff' | 'tasks' | 'usage';
+
+export interface Settings {
+  externalTerminal: 'auto' | 'windows-terminal' | 'powershell' | 'terminal-app' | 'iterm';
+  theme: ThemeMode;
+  locale: Locale;
+  uiFontSize: number;
+  terminalFontSize: number;
+  /** Empty = the built-in monospace stack. */
+  terminalFontFamily: string;
+  layout: Layout | null;
+  rightPanel: { open: boolean; tab: RightPanelTab; width: number };
+  /** Sessions shown in their own window; reopened after a restart. */
+  popouts: string[];
+  sidebarWidth: number;
+}
+
 export interface EnvInfo {
   platform: string;
   claudePath: string | null;

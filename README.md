@@ -23,6 +23,24 @@ REAL_CLAUDE=1 npx playwright test real-claude   # インストール済みの cl
 npm run pack        # 署名なしでパッケージ化(release/)
 ```
 
+## 主なショートカット
+
+| 操作                            | macOS     | Windows                                                 |
+| ------------------------------- | --------- | ------------------------------------------------------- |
+| コマンドパレット                | ⌘K / ⇧⌘P  | Ctrl+Shift+K / Ctrl+Shift+P(ターミナル外では Ctrl+K も) |
+| 新しいセッション / タブを閉じる | ⌘T / ⌘W   | Ctrl+Shift+T / Ctrl+Shift+W                             |
+| 右 / 下に分割                   | ⌘D / ⇧⌘D  | Ctrl+Shift+D / Ctrl+Shift+E                             |
+| ペインの最大化 / 閉じる         | ⇧⌘↵ / ⇧⌘W | Ctrl+Shift+Enter / Ctrl+Shift+X                         |
+| 次 / 前のペイン                 | ⌘] / ⌘[   | Ctrl+Shift+] / Ctrl+Shift+[                             |
+| 別ウィンドウで開く              | ⇧⌘O       | Ctrl+Shift+O                                            |
+| 右パネル / 設定                 | ⌘B / ⌘,   | Ctrl+Shift+B / Ctrl+Shift+,(ターミナル外では Ctrl+, も) |
+
+ターミナルの中では、これら以外のキーはすべて claude にそのまま渡ります(Windows の Ctrl+C は、選択範囲があるときだけコピー)。
+
+## セッションの状態の表示
+
+CodeDeck は、claude を起動するときに `--settings` で状態通知用のフックを追加します(プロファイルの設定ファイルは書き換えません)。フックは「作業中」「完了」などのイベント名だけを `userData/status/` に書き、プロンプトや出力は書きません。
+
 ## 署名なしのビルドを実行するとき
 
 - **Windows**: SmartScreen の「Windows によって PC が保護されました」が出たら、「詳細情報」→「実行」を選びます。

@@ -2,17 +2,18 @@ import { useEffect, useRef, useState } from 'react';
 import type { PtyState, Session } from '@shared/types';
 import { api, errorKey } from '../api';
 import { useT } from '../i18n';
-import { fitTerminal, getTerminal } from './registry';
+import { fitTerminal, focusTerminal, getTerminal, nudgeRedraw } from './registry';
 
 interface Props {
   session: Session;
-  active: boolean;
+  /** This pane has keyboard focus (the active session). */
+  focused: boolean;
   ptyState: PtyState;
   exitCode: number | null;
 }
 
-/** Hosts one session's xterm. The PTY is started lazily when the tab is first shown. */
-export function TerminalView({ session, active, ptyState, exitCode }: Props) {
+/** Hosts one session's xterm inside a pane. The PTY is started lazily when first shown. */
+export function TerminalView({ session, focused, ptyState, exitCode }: Props) {
   const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [error, setError] = useState<string | null>(null);
@@ -24,12 +25,16 @@ export function TerminalView({ session, active, ptyState, exitCode }: Props) {
     if (!el) return;
     const { host } = getTerminal(session.id);
     el.appendChild(host);
+    fitTerminal(session.id);
+    // Moved into a pane of another size, or attached in another window: let claude redraw.
+    if (ptyState === 'running') nudgeRedraw(session.id);
     const ro = new ResizeObserver(() => fitTerminal(session.id));
     ro.observe(el);
     return () => {
       ro.disconnect();
       if (host.parentElement === el) el.removeChild(host);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [session.id]);
 
   const start = async () => {
@@ -47,35 +52,27 @@ export function TerminalView({ session, active, ptyState, exitCode }: Props) {
     }
   };
 
+  // Visible + embedded + not started → start claude.
   useEffect(() => {
-    if (!active) return;
-    fitTerminal(session.id);
-    // Focus can be refused for a few frames (pane still hidden, a closing dialog restoring its own
+    if (session.location === 'embedded' && ptyState === 'idle') void start();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [session.location, ptyState, session.id]);
+
+  useEffect(() => {
+    if (!focused) return;
+    // Focus can be refused for a few frames (pane just mounted, a closing dialog restoring its own
     // focus), so retry until the terminal really has it: a new session must accept typing at once.
     let raf = 0;
     let tries = 0;
     const focus = () => {
-      const { term, host } = getTerminal(session.id);
-      term.focus();
-      if (!host.contains(document.activeElement) && ++tries < 30) raf = requestAnimationFrame(focus);
+      if (!focusTerminal(session.id) && ++tries < 30) raf = requestAnimationFrame(focus);
     };
     raf = requestAnimationFrame(focus);
-    if (session.location === 'embedded' && ptyState === 'idle') void start();
     return () => cancelAnimationFrame(raf);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, session.location, ptyState, session.id]);
-
-  const restart = () => {
-    getTerminal(session.id).term.write('\r\n\x1b[2m────────\x1b[0m\r\n');
-    void start();
-  };
+  }, [focused, session.id]);
 
   return (
-    <div
-      className="absolute inset-0 flex flex-col"
-      style={{ visibility: active ? 'visible' : 'hidden', zIndex: active ? 1 : 0 }}
-      aria-hidden={!active}
-    >
+    <div className="flex h-full min-h-0 flex-col">
       {error && (
         <div role="alert" className="border-b border-line bg-danger/15 px-3 py-2 text-danger">
           {t('session.startFailed', { msg: t(error) })}
@@ -85,7 +82,10 @@ export function TerminalView({ session, active, ptyState, exitCode }: Props) {
         <div className="flex items-center gap-3 border-b border-line bg-panel-2 px-3 py-1.5 text-muted">
           <span aria-hidden>■</span>
           <span>{t('session.exited', { code: exitCode ?? '-' })}</span>
-          <button className="rounded border border-line px-2 py-0.5 text-fg hover:bg-panel" onClick={restart}>
+          <button
+            className="rounded border border-line px-2 py-0.5 text-fg hover:bg-panel"
+            onClick={() => void start()}
+          >
             {t('session.restart')}
           </button>
         </div>

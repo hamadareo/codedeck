@@ -40,6 +40,14 @@ const MIGRATIONS: string[] = [
     last_active_at INTEGER NOT NULL
   );
   `,
+  // v2: per-project notes (right panel, §4)
+  `
+  CREATE TABLE project_notes (
+    project_id TEXT PRIMARY KEY REFERENCES projects(id) ON DELETE CASCADE,
+    body TEXT NOT NULL DEFAULT '',
+    updated_at INTEGER NOT NULL
+  );
+  `,
 ];
 
 export type Db = DatabaseSync;

@@ -5,6 +5,8 @@ import { claudeEnv } from './env';
 export interface SpawnSpec {
   file: string;
   args: string[];
+  /** Windows only: the exact command line for node-pty (used for cmd.exe shims). */
+  commandLine?: string;
   env: Record<string, string>;
 }
 
@@ -57,8 +59,10 @@ export function pickWindowsCandidate(lines: string[]): string | null {
 }
 
 /** Interactive session args: a fresh conversation gets a fixed id; a known one is resumed. */
-export function sessionArgs(sessionId: string, resume: boolean): string[] {
-  return resume ? ['--resume', sessionId] : ['--session-id', sessionId];
+export function sessionArgs(sessionId: string, resume: boolean, hookSettingsFile?: string): string[] {
+  const id = resume ? ['--resume', sessionId] : ['--session-id', sessionId];
+  // A file path, not inline JSON: JSON quotes do not survive cmd.exe for .cmd shims.
+  return hookSettingsFile ? ['--settings', hookSettingsFile, ...id] : id;
 }
 
 /** Wrap batch shims (.cmd/.bat) in cmd.exe; run everything else directly. */
@@ -68,17 +72,27 @@ export function buildSpawnSpec(opts: {
   configDir: string | null;
   platform?: NodeJS.Platform;
   baseEnv?: NodeJS.ProcessEnv;
+  /** Added after sanitizing (e.g. CODEDECK_STATUS_FILE for the status hooks). */
+  extraEnv?: Record<string, string>;
 }): SpawnSpec {
   const platform = opts.platform ?? process.platform;
-  const env = claudeEnv(opts.baseEnv ?? process.env, opts.configDir);
+  const env = { ...claudeEnv(opts.baseEnv ?? process.env, opts.configDir), ...opts.extraEnv };
   if (platform === 'win32' && /\.(cmd|bat)$/i.test(opts.claudePath)) {
+    const inner = [opts.claudePath, ...opts.args].map(cmdQuote).join(' ');
     return {
       file: env.ComSpec || 'cmd.exe',
       args: ['/d', '/s', '/c', opts.claudePath, ...opts.args],
+      // `cmd /s /c "<line>"` strips exactly the outer quotes, so paths with spaces survive.
+      commandLine: `/d /s /c "${inner}"`,
       env,
     };
   }
   return { file: opts.claudePath, args: opts.args, env };
+}
+
+/** Quote one argument for a cmd.exe command line (inside quotes, & | < > are literal). */
+export function cmdQuote(arg: string): string {
+  return /[\s"&|<>^()]/.test(arg) || arg === '' ? `"${arg.replace(/"/g, '""')}"` : arg;
 }
 
 function run(spec: SpawnSpec, timeoutMs: number): Promise<{ code: number; stdout: string }> {

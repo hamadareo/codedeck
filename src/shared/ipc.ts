@@ -1,4 +1,5 @@
 import type {
+  Activity,
   EnvInfo,
   NewProfileInput,
   NewProjectInput,
@@ -7,11 +8,23 @@ import type {
   Project,
   PtyState,
   Session,
+  Settings,
 } from './types';
+
+export interface PtySnapshot {
+  data: string;
+  end: number;
+  state: PtyState;
+}
+
+export type WindowContext = { kind: 'main' } | { kind: 'popout'; sessionId: string };
 
 /** Request/response channels (ipcRenderer.invoke ↔ ipcMain.handle). */
 export interface InvokeContract {
   'env:info': { args: []; result: EnvInfo };
+  'window:context': { args: []; result: WindowContext };
+  'settings:get': { args: []; result: Settings };
+  'settings:set': { args: [patch: Partial<Settings>]; result: Settings };
   'profiles:list': { args: []; result: Profile[] };
   'profiles:create': { args: [NewProfileInput]; result: Profile };
   'profiles:update': {
@@ -27,6 +40,8 @@ export interface InvokeContract {
     result: Project;
   };
   'projects:remove': { args: [id: string]; result: void };
+  'notes:get': { args: [projectId: string]; result: string };
+  'notes:set': { args: [projectId: string, body: string]; result: void };
   'dialog:pickFolder': { args: []; result: string | null };
   'sessions:list': { args: []; result: Session[] };
   'sessions:create': { args: [NewSessionInput]; result: Session };
@@ -34,11 +49,20 @@ export interface InvokeContract {
   'sessions:close': { args: [id: string]; result: void };
   'sessions:reopen': { args: [id: string]; result: Session };
   'sessions:remove': { args: [id: string]; result: void };
+  'sessions:rename': { args: [id: string, title: string]; result: Session };
   'sessions:openExternal': { args: [id: string]; result: Session };
   'sessions:reclaim': { args: [id: string]; result: Session };
   /** Start (or report) the PTY for a session. Idempotent. */
   'pty:start': { args: [id: string, cols: number, rows: number]; result: { state: PtyState } };
   'pty:states': { args: []; result: Record<string, PtyState> };
+  /** Recent output, for a terminal attaching mid-session (another window, a reload). */
+  'pty:snapshot': { args: [id: string]; result: PtySnapshot };
+  'activity:list': { args: []; result: Record<string, Activity> };
+  /** Show a session in its own window (§4 pop-out). */
+  'window:popout': { args: [sessionId: string]; result: void };
+  /** Close a session's own window and bring it back to the main window. */
+  'window:dock': { args: [sessionId: string]; result: void };
+  'window:popouts': { args: []; result: string[] };
   'clipboard:read': { args: []; result: { text: string; hasImage: boolean } };
 }
 
@@ -46,15 +70,21 @@ export interface InvokeContract {
 export interface SendContract {
   'pty:input': [id: string, data: string];
   'pty:resize': [id: string, cols: number, rows: number];
+  /** The session is visible to the user (a finished turn counts as seen). */
+  'session:seen': [id: string];
   'clipboard:write': [text: string];
   'link:open': [url: string];
 }
 
 /** Main → renderer events. */
 export interface EventContract {
-  'pty:data': [id: string, data: string];
+  /** `end` is the stream offset right after `data` (see pty:snapshot). */
+  'pty:data': [id: string, data: string, end: number];
   'pty:state': [id: string, state: PtyState, exitCode: number | null];
+  'activity:changed': [id: string, activity: Activity];
   'state:changed': [what: 'profiles' | 'projects' | 'sessions'];
+  'settings:changed': [settings: Settings];
+  'windows:changed': [popouts: string[]];
 }
 
 export type InvokeChannel = keyof InvokeContract;
@@ -63,6 +93,9 @@ export type EventChannel = keyof EventContract;
 
 export const INVOKE_CHANNELS: InvokeChannel[] = [
   'env:info',
+  'window:context',
+  'settings:get',
+  'settings:set',
   'profiles:list',
   'profiles:create',
   'profiles:update',
@@ -72,20 +105,41 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'projects:create',
   'projects:update',
   'projects:remove',
+  'notes:get',
+  'notes:set',
   'dialog:pickFolder',
   'sessions:list',
   'sessions:create',
   'sessions:close',
   'sessions:reopen',
   'sessions:remove',
+  'sessions:rename',
   'sessions:openExternal',
   'sessions:reclaim',
   'pty:start',
   'pty:states',
+  'pty:snapshot',
+  'activity:list',
+  'window:popout',
+  'window:dock',
+  'window:popouts',
   'clipboard:read',
 ];
-export const SEND_CHANNELS: SendChannel[] = ['pty:input', 'pty:resize', 'clipboard:write', 'link:open'];
-export const EVENT_CHANNELS: EventChannel[] = ['pty:data', 'pty:state', 'state:changed'];
+export const SEND_CHANNELS: SendChannel[] = [
+  'pty:input',
+  'pty:resize',
+  'session:seen',
+  'clipboard:write',
+  'link:open',
+];
+export const EVENT_CHANNELS: EventChannel[] = [
+  'pty:data',
+  'pty:state',
+  'activity:changed',
+  'state:changed',
+  'settings:changed',
+  'windows:changed',
+];
 
 /** The API exposed on window.codedeck by the preload script. */
 export interface CodeDeckApi {

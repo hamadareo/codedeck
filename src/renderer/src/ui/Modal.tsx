@@ -7,10 +7,11 @@ interface Props {
   onClose(): void;
   footer: ReactNode;
   width?: string;
+  testId?: string;
 }
 
 /** Accessible modal: focus moves in, Esc closes, Tab stays inside. */
-export function Modal({ title, children, onClose, footer, width = 'w-[480px]' }: Props) {
+export function Modal({ title, children, onClose, footer, width = 'w-[480px]', testId }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
     const prev = document.activeElement as HTMLElement | null;
@@ -53,7 +54,8 @@ export function Modal({ title, children, onClose, footer, width = 'w-[480px]' }:
         role="dialog"
         aria-modal="true"
         aria-label={title}
-        className={`${width} max-w-[92vw] rounded-lg border border-line bg-panel shadow-2xl`}
+        data-testid={testId}
+        className={`${width} max-h-[90vh] max-w-[92vw] overflow-y-auto rounded-lg border border-line bg-panel shadow-2xl`}
         onMouseDown={(e) => e.stopPropagation()}
         onKeyDown={onKeyDown}
       >
@@ -70,9 +72,9 @@ export function Button({
   ...props
 }: React.ButtonHTMLAttributes<HTMLButtonElement> & { variant?: 'primary' | 'secondary' | 'danger' }) {
   const cls = {
-    primary: 'bg-accent text-black hover:brightness-110 font-medium',
+    primary: 'bg-accent text-on-accent hover:brightness-110 font-medium',
     secondary: 'border border-line text-fg hover:bg-panel-2',
-    danger: 'bg-danger text-black hover:brightness-110 font-medium',
+    danger: 'bg-danger text-on-danger hover:brightness-110 font-medium',
   }[variant];
   return (
     <button

@@ -107,6 +107,32 @@ describe('projects and sessions', () => {
   });
 });
 
+describe('notes and renaming', () => {
+  it('stores one note per project and drops it with the project', () => {
+    const pr = svc.createProject({ name: 'app', path: tmp });
+    expect(svc.getNote(pr.id)).toBe('');
+    svc.setNote(pr.id, 'メモ\nline 2');
+    expect(svc.getNote(pr.id)).toBe('メモ\nline 2');
+    svc.removeProject(pr.id);
+    expect(svc.notes.get(pr.id)).toBe('');
+    expect(() => svc.setNote(pr.id, 'x')).toThrow();
+  });
+
+  it('renames a session; an empty title is rejected', () => {
+    const p = svc.createProfile({ name: 'p', kind: 'personal' });
+    const s = svc.createSession({ profileId: p.id, cwd: tmp });
+    expect(svc.renameSession(s.id, '  review  ').title).toBe('review');
+    expect(() => svc.renameSession(s.id, '  ')).toThrow('session.error.titleRequired');
+  });
+
+  it('activity events are ignored for sessions that are not running', () => {
+    const p = svc.createProfile({ name: 'p', kind: 'personal' });
+    const s = svc.createSession({ profileId: p.id, cwd: tmp });
+    svc.applyActivity(s.id, 'prompt');
+    expect(svc.activity(s.id)).toBe('unknown');
+  });
+});
+
 describe('restore rule', () => {
   it('resumes only when claude saved a transcript for the id', () => {
     const dir = path.join(tmp, 'cfg');
@@ -124,6 +150,6 @@ describe('migrations', () => {
     db.close();
     db = openDatabase(path.join(tmp, 'codedeck.db'));
     const v = db.prepare('PRAGMA user_version').get() as { user_version: number };
-    expect(v.user_version).toBe(1);
+    expect(v.user_version).toBe(2);
   });
 });

@@ -3,21 +3,35 @@ import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
 import { decideTerminalKey, pasteDecision, type AppAction, type Platform } from '@shared/keymap';
+import { TERMINAL_THEMES, terminalFontFamily, type ResolvedTheme } from '@shared/theme';
 import { api } from '../api';
 
 /**
- * xterm.js instances live outside React so re-renders and tab switches never
- * lose scrollback. One entry per session id.
+ * xterm.js instances live outside React so re-renders, pane moves and tab
+ * switches never lose scrollback. One entry per session id, per window.
+ *
+ * A terminal created while its PTY is already running (another window, a
+ * reload) first replays main's recent output, then continues with live data.
+ * Every chunk carries its stream offset, so nothing is shown twice or lost.
  */
 interface Entry {
   term: Terminal;
   fit: FitAddon;
   host: HTMLDivElement;
+  /** Live chunks that arrived while the snapshot was loading. */
+  pending: { data: string; end: number }[] | null;
+  /** Stream offset already written to this terminal. */
+  end: number;
 }
 
 const entries = new Map<string, Entry>();
 let platform: Platform = 'other';
 let appActionHandler: (action: AppAction) => void = () => {};
+let appearance: { theme: ResolvedTheme; fontSize: number; fontFamily: string } = {
+  theme: 'dark',
+  fontSize: 14,
+  fontFamily: '',
+};
 
 export function setPlatform(p: Platform): void {
   platform = p;
@@ -27,11 +41,32 @@ export function setAppActionHandler(fn: (action: AppAction) => void): void {
   appActionHandler = fn;
 }
 
-// One global stream; each chunk goes to its session's terminal unmodified.
-api.on('pty:data', (id, data) => entries.get(id)?.term.write(data));
+/** Write the part of a chunk that lies beyond what the terminal already has. */
+function writeFrom(e: Entry, data: string, end: number): void {
+  if (end <= e.end) return;
+  const fresh = end - e.end;
+  e.term.write(fresh >= data.length ? data : data.slice(data.length - fresh));
+  e.end = end;
+}
 
-const FONT_FAMILY =
-  '"Cascadia Mono", "Cascadia Code", Consolas, Menlo, "SF Mono", "BIZ UDGothic", "MS Gothic", "Osaka-Mono", monospace';
+// One global stream; each chunk goes to its session's terminal unmodified.
+api.on('pty:data', (id, data, end) => {
+  const e = entries.get(id);
+  if (!e) return;
+  if (e.pending) e.pending.push({ data, end });
+  else writeFrom(e, data, end);
+});
+
+export function applyTerminalAppearance(next: typeof appearance): void {
+  appearance = next;
+  for (const [id, e] of entries) {
+    e.term.options.theme = TERMINAL_THEMES[next.theme];
+    e.host.style.backgroundColor = TERMINAL_THEMES[next.theme].background!;
+    e.term.options.fontSize = next.fontSize;
+    e.term.options.fontFamily = terminalFontFamily(next.fontFamily);
+    fitTerminal(id);
+  }
+}
 
 export function getTerminal(id: string): Entry {
   const existing = entries.get(id);
@@ -40,21 +75,17 @@ export function getTerminal(id: string): Entry {
   const host = document.createElement('div');
   host.style.width = '100%';
   host.style.height = '100%';
+  host.style.backgroundColor = TERMINAL_THEMES[appearance.theme].background!;
   const term = new Terminal({
     allowProposedApi: true,
     cursorBlink: true,
-    fontFamily: FONT_FAMILY,
-    fontSize: 14,
+    fontFamily: terminalFontFamily(appearance.fontFamily),
+    fontSize: appearance.fontSize,
     scrollback: 10_000,
     macOptionIsMeta: true,
     // Windows ConPTY reflows itself; xterm must not reflow on top of it.
     windowsPty: navigator.userAgent.includes('Windows') ? { backend: 'conpty' } : undefined,
-    theme: {
-      background: '#0b0d12',
-      foreground: '#e6e8ee',
-      cursor: '#e6e8ee',
-      selectionBackground: '#334155',
-    },
+    theme: TERMINAL_THEMES[appearance.theme],
   });
   const fit = new FitAddon();
   term.loadAddon(fit);
@@ -96,9 +127,56 @@ export function getTerminal(id: string): Entry {
   term.onBinary((data) => api.send('pty:input', id, data));
   term.onResize(({ cols, rows }) => api.send('pty:resize', id, cols, rows));
 
-  const entry = { term, fit, host };
+  const entry: Entry = { term, fit, host, pending: [], end: 0 };
   entries.set(id, entry);
+  void api.invoke('pty:snapshot', id).then(
+    (snap) => {
+      if (entries.get(id) !== entry) return;
+      if (snap.data) term.write(snap.data);
+      entry.end = snap.end;
+      const queued = entry.pending ?? [];
+      entry.pending = null;
+      for (const c of queued) writeFrom(entry, c.data, c.end);
+    },
+    () => {
+      const queued = entry.pending ?? [];
+      entry.pending = null;
+      for (const c of queued) writeFrom(entry, c.data, c.end);
+    },
+  );
   return entry;
+}
+
+export function hasTerminal(id: string): boolean {
+  return entries.has(id);
+}
+
+/** Paste text into a session as if the user pasted it (bracketed paste; nothing is submitted). */
+export function pasteInto(id: string, text: string): boolean {
+  const e = entries.get(id);
+  if (!e) return false;
+  e.term.paste(text);
+  e.term.focus();
+  return true;
+}
+
+export function focusTerminal(id: string): boolean {
+  const e = entries.get(id);
+  if (!e) return false;
+  e.term.focus();
+  return e.host.contains(document.activeElement);
+}
+
+/**
+ * Ask claude to redraw for this terminal's size: a terminal that attached
+ * mid-session replayed output drawn for another width.
+ */
+export function nudgeRedraw(id: string): void {
+  const e = entries.get(id);
+  if (!e) return;
+  const { cols, rows } = e.term;
+  api.send('pty:resize', id, Math.max(cols - 1, 2), rows);
+  setTimeout(() => api.send('pty:resize', id, e.term.cols, e.term.rows), 60);
 }
 
 export function fitTerminal(id: string): void {

@@ -11,3 +11,5 @@ Thumbs.db
 spike/probe-output/
 test-results/
 playwright-report/
+
+*.tsbuildinfo

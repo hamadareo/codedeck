@@ -5,6 +5,7 @@
  *  - App shortcuts: Cmd+<key> on macOS, Ctrl+Shift+<key> on Windows/Linux
  *    (plain Ctrl+<key> belongs to the CLI there: Ctrl+C, Ctrl+W, Ctrl+K ...).
  *  - Terminal-emulator duties: copy with a selection, paste, Shift+Enter newline.
+ * Outside a terminal, Windows also accepts Ctrl+K (palette) and Ctrl+, (settings) (§4).
  */
 
 export type Platform = 'mac' | 'other';
@@ -19,7 +20,21 @@ export interface KeyLike {
 }
 
 export type AppAction =
-  'newSession' | 'closeTab' | 'nextTab' | 'prevTab' | `tab${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`;
+  | 'newSession'
+  | 'closeTab'
+  | 'nextTab'
+  | 'prevTab'
+  | `tab${1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9}`
+  | 'palette'
+  | 'settings'
+  | 'splitRight'
+  | 'splitDown'
+  | 'closePane'
+  | 'maximize'
+  | 'nextPane'
+  | 'prevPane'
+  | 'toggleRightPanel'
+  | 'popout';
 
 export type TerminalKeyDecision =
   | { kind: 'pass' }
@@ -40,23 +55,78 @@ export function modLabel(platform: Platform): string {
   return platform === 'mac' ? '⌘' : 'Ctrl+Shift+';
 }
 
-export function appActionFor(ev: KeyLike, platform: Platform): AppAction | null {
+/**
+ * Shortcut table. `shift` applies to macOS only (Windows shortcuts always hold Ctrl+Shift).
+ * Keys are matched on `key` (lower-cased) so layouts keep their printed letters; symbols
+ * list the shifted variants too ("]" / "}").
+ */
+const TABLE: { action: AppAction; keys: string[]; macShift: boolean }[] = [
+  { action: 'newSession', keys: ['t'], macShift: false },
+  { action: 'closeTab', keys: ['w'], macShift: false },
+  { action: 'closePane', keys: ['w'], macShift: true },
+  { action: 'palette', keys: ['k'], macShift: false },
+  { action: 'palette', keys: ['p'], macShift: true },
+  { action: 'splitRight', keys: ['d'], macShift: false },
+  { action: 'splitDown', keys: ['d'], macShift: true },
+  { action: 'maximize', keys: ['Enter'], macShift: true },
+  { action: 'nextPane', keys: [']', '}'], macShift: false },
+  { action: 'prevPane', keys: ['[', '{'], macShift: false },
+  { action: 'toggleRightPanel', keys: ['b'], macShift: false },
+  { action: 'settings', keys: [',', '<'], macShift: false },
+  { action: 'popout', keys: ['o'], macShift: true },
+];
+
+/** Windows/Linux: Ctrl+Shift+<key>. Shift is always held, so pick distinct keys where macOS uses Shift. */
+const WIN_KEYS: Partial<Record<AppAction, string[]>> = {
+  newSession: ['t'],
+  closeTab: ['w'],
+  closePane: ['x'],
+  palette: ['k', 'p'],
+  splitRight: ['d'],
+  splitDown: ['e'],
+  maximize: ['Enter'],
+  nextPane: [']', '}'],
+  prevPane: ['[', '{'],
+  toggleRightPanel: ['b'],
+  settings: [',', '<'],
+  popout: ['o'],
+};
+
+export function appActionFor(ev: KeyLike, platform: Platform, inTerminal = true): AppAction | null {
   const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;
   // Ctrl+Tab / Ctrl+Shift+Tab switch tabs on both platforms (not used by the CLI).
   if (ev.ctrlKey && !ev.metaKey && !ev.altKey && k === 'Tab') return ev.shiftKey ? 'prevTab' : 'nextTab';
 
-  const isAppMod =
-    platform === 'mac'
-      ? ev.metaKey && !ev.ctrlKey && !ev.altKey
-      : ev.ctrlKey && ev.shiftKey && !ev.metaKey && !ev.altKey;
-  if (!isAppMod) return null;
-  if (platform === 'mac' && ev.shiftKey) return null; // reserved for Cmd+Shift combos (Phase 2)
-  if (k === 't') return 'newSession';
-  if (k === 'w') return 'closeTab';
-  // With Shift held, digits arrive as symbols ("!", "\"" ...) depending on layout; use the physical key.
+  if (platform === 'mac') {
+    if (!ev.metaKey || ev.ctrlKey || ev.altKey) return null;
+    // With Shift held, digits arrive as symbols depending on layout; use the physical key.
+    const digit = /^Digit([1-9])$/.exec(ev.code ?? '')?.[1] ?? (/^[1-9]$/.test(k) ? k : null);
+    if (digit && !ev.shiftKey) return `tab${digit}` as AppAction;
+    return TABLE.find((r) => r.macShift === ev.shiftKey && r.keys.includes(k))?.action ?? null;
+  }
+
+  // Outside the terminal, the plain Ctrl shortcuts from §4 are free to use.
+  if (!inTerminal && ev.ctrlKey && !ev.shiftKey && !ev.altKey && !ev.metaKey) {
+    if (k === 'k') return 'palette';
+    if (k === ',') return 'settings';
+  }
+  if (!(ev.ctrlKey && ev.shiftKey && !ev.metaKey && !ev.altKey)) return null;
   const digit = /^Digit([1-9])$/.exec(ev.code ?? '')?.[1] ?? (/^[1-9]$/.test(k) ? k : null);
   if (digit) return `tab${digit}` as AppAction;
+  for (const [action, keys] of Object.entries(WIN_KEYS)) if (keys.includes(k)) return action as AppAction;
   return null;
+}
+
+/** Human-readable shortcut for menus and the palette ("⌘D" / "Ctrl+Shift+D"). */
+export function shortcutLabel(action: AppAction, platform: Platform): string {
+  const show = (key: string) => (key === 'Enter' ? '↵' : key.toUpperCase());
+  if (platform === 'mac') {
+    const r = TABLE.find((x) => x.action === action);
+    if (!r) return '';
+    return `${r.macShift ? '⇧' : ''}⌘${show(r.keys[0]!)}`;
+  }
+  const keys = WIN_KEYS[action];
+  return keys ? `Ctrl+Shift+${show(keys[0]!)}` : '';
 }
 
 export function decideTerminalKey(
@@ -64,7 +134,7 @@ export function decideTerminalKey(
   platform: Platform,
   hasSelection: boolean,
 ): TerminalKeyDecision {
-  const action = appActionFor(ev, platform);
+  const action = appActionFor(ev, platform, true);
   if (action) return { kind: 'app', action };
 
   const k = ev.key.length === 1 ? ev.key.toLowerCase() : ev.key;

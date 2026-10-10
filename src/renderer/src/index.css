@@ -1,6 +1,10 @@
 @import 'tailwindcss';
 
-/* Dark theme for Phase 1; light/system themes arrive in Phase 2 (§4). Contrast ≥ WCAG AA. */
+/*
+ * Color tokens. These are the dark defaults; the active palette (light / dark,
+ * src/shared/theme.ts) is written onto :root at runtime. Contrast ≥ WCAG AA is
+ * checked in tests/unit/theme.test.ts.
+ */
 @theme {
   --color-bg: #0b0d12;
   --color-panel: #12151c;
@@ -12,6 +16,9 @@
   --color-danger: #f87171;
   --color-ok: #4ade80;
   --color-warn: #fbbf24;
+  --color-on-accent: #000000;
+  --color-on-danger: #000000;
+  --color-on-ok: #000000;
 }
 
 html,
@@ -32,7 +39,7 @@ body {
     'Yu Gothic UI',
     'Meiryo',
     sans-serif;
-  font-size: 13px;
+  font-size: var(--ui-font-size, 13px);
 }
 
 /* Japanese UI fonts draw "\" as "¥"; paths must use a font that shows a backslash. */
@@ -49,4 +56,32 @@ code,
 .xterm {
   height: 100%;
   padding: 4px 0 0 6px;
+}
+
+/* xterm.css paints the viewport black; the host carries the theme's background instead. */
+.xterm .xterm-viewport {
+  background-color: transparent !important;
+}
+
+/* Thin, theme-aware scrollbars for panels. */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  * {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@keyframes cd-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+.cd-spin {
+  display: inline-block;
+  animation: cd-spin 1.6s linear infinite;
 }

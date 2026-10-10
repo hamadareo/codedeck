@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { claudeEnv, sanitizeEnv } from '../../src/main/platform/env';
 import {
   buildSpawnSpec,
+  cmdQuote,
   parseAuthStatus,
   pickWindowsCandidate,
   sessionArgs,
@@ -61,6 +62,45 @@ describe('buildSpawnSpec', () => {
     });
     expect(s.file).toBe('C:\\Windows\\system32\\cmd.exe');
     expect(s.args).toEqual(['/d', '/s', '/c', 'C:\\npm\\claude.cmd', '--resume', 'abc']);
+    expect(s.commandLine).toBe('/d /s /c "C:\\npm\\claude.cmd --resume abc"');
+  });
+
+  it('regression: a .cmd shim gets paths with spaces intact (cmd /s strips only the outer quotes)', () => {
+    const s = buildSpawnSpec({
+      claudePath: 'C:\\Program Files\\nodejs\\claude.cmd',
+      args: [
+        '--settings',
+        'C:\\Users\\a b\\AppData\\Roaming\\CodeDeck\\codedeck-hooks.json',
+        '--session-id',
+        'x',
+      ],
+      configDir: null,
+      platform: 'win32',
+      baseEnv: {},
+    });
+    expect(s.commandLine).toBe(
+      '/d /s /c ""C:\\Program Files\\nodejs\\claude.cmd" --settings "C:\\Users\\a b\\AppData\\Roaming\\CodeDeck\\codedeck-hooks.json" --session-id x"',
+    );
+  });
+
+  it('cmdQuote quotes only when needed and doubles inner quotes', () => {
+    expect(cmdQuote('abc')).toBe('abc');
+    expect(cmdQuote('a b')).toBe('"a b"');
+    expect(cmdQuote('a&b')).toBe('"a&b"');
+    expect(cmdQuote('say "hi"')).toBe('"say ""hi"""');
+    expect(cmdQuote('')).toBe('""');
+  });
+
+  it('extraEnv is added after sanitizing (the status file path reaches the child)', () => {
+    const s = buildSpawnSpec({
+      claudePath: '/bin/claude',
+      args: [],
+      configDir: '/cfg',
+      platform: 'darwin',
+      baseEnv: { CODEDECK_STATUS_FILE: '/leaked' },
+      extraEnv: { CODEDECK_STATUS_FILE: '/ud/status/id.log' },
+    });
+    expect(s.env.CODEDECK_STATUS_FILE).toBe('/ud/status/id.log');
   });
 
   it('does not wrap on macOS', () => {
@@ -79,6 +119,12 @@ describe('claude helpers', () => {
   it('sessionArgs: new vs resume', () => {
     expect(sessionArgs('id1', false)).toEqual(['--session-id', 'id1']);
     expect(sessionArgs('id1', true)).toEqual(['--resume', 'id1']);
+    expect(sessionArgs('id1', true, '/ud/codedeck-hooks.json')).toEqual([
+      '--settings',
+      '/ud/codedeck-hooks.json',
+      '--resume',
+      'id1',
+    ]);
   });
 
   it('pickWindowsCandidate prefers .exe, then .cmd', () => {
