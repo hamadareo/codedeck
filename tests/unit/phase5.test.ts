@@ -18,12 +18,13 @@ import {
 import { commandFile, commandSlug, expandPrompt, parsePromptExport, promptVariables } from '@shared/prompts';
 import { computeStats } from '@shared/stats';
 import type { Prompt, Session } from '@shared/types';
+import { removeDir } from './cleanup';
 
 let tmp = '';
 const mk = (label: string) => fs.mkdtempSync(path.join(os.tmpdir(), `cd p5 ${label} テスト `));
 const rm = (dir: string) => {
   try {
-    fs.rmSync(dir, { recursive: true, force: true });
+    removeDir(dir);
   } catch {
     // Windows may still hold a PTY's cwd for a moment
   }

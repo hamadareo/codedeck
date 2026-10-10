@@ -21,6 +21,7 @@ import { SettingsStore } from '../../src/main/settings';
 import { DiscordBridge, type RemoteKind } from '../../src/main/discord/bridge';
 import { parseShortstat, ThreadRepo } from '../../src/main/discord/controller';
 import { SecretStore, type Cipher } from '../../src/main/discord/secretStore';
+import { removeDir } from './cleanup';
 import type {
   ButtonEvent,
   CommandDef,
@@ -294,11 +295,7 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
     svc.shutdown();
     db.close();
     delete process.env.CODEDECK_CLAUDE_PATH;
-    try {
-      fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 300 });
-    } catch {
-      // Windows may still hold the PTY's working directory for a moment; the OS cleans temp.
-    }
+    removeDir(tmp);
   });
 
   it('registers guild commands', () => {
