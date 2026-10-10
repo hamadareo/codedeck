@@ -65,6 +65,15 @@ if (process.stdin.isTTY) process.stdin.setRawMode(true);
 process.stdin.setEncoding('utf8');
 process.stdin.on('data', (d) => {
   if (d === '\x03') process.exit(0);
+  // On a slow machine the last keys and Enter can arrive in one chunk: handle them one by one.
+  if (d.length > 1 && d.includes('\r') && !d.startsWith('\x1b')) {
+    for (const part of d.split(/(\r)/)) if (part) onInput(part);
+    return;
+  }
+  onInput(d);
+});
+
+function onInput(d) {
   if (d.includes('\r')) {
     const typed = line;
     line = '';
@@ -114,4 +123,4 @@ process.stdin.on('data', (d) => {
   }
   line += d;
   process.stdout.write(d);
-});
+}

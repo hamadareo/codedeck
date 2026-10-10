@@ -79,6 +79,7 @@ test('typing stays responsive with 10 busy sessions (§4)', async () => {
   const { app, page } = await launch(sb);
   await addProfile(page, 'p', '個人');
   await expectTerminal(page, /hooks=yes/);
+  const idle = await typingLatency(page, 'i');
   // Nine more sessions, started in the background, each printing heavy output.
   const ids = await page.evaluate(async () => {
     const api = (window as unknown as { codedeck: { invoke(c: string, ...a: unknown[]): Promise<unknown> } })
@@ -105,36 +106,56 @@ test('typing stays responsive with 10 busy sessions (§4)', async () => {
   }, ids);
   await page.waitForTimeout(1000);
 
-  // Measure: key press → its echo is in the terminal buffer.
-  const samples: number[] = [];
-  for (let i = 0; i < 10; i++) {
-    const mark = `k${i}`;
-    const t0 = Date.now();
-    await page.keyboard.type(mark);
-    await expect
-      .poll(
-        async () =>
-          (
-            await page.evaluate(() => {
-              const pane = document.querySelector('[data-testid="pane"][data-focused="true"]');
-              const id = pane
-                ?.querySelector('[data-testid^="terminal-"]')
-                ?.getAttribute('data-testid')
-                ?.slice(9);
-              const read = (window as unknown as { __codedeckTerminalText?: (id: string) => string })
-                .__codedeckTerminalText;
-              return id && read ? read(id).slice(-4000) : '';
-            })
-          ).includes(mark),
-        { intervals: [5], timeout: 5000 },
-      )
-      .toBe(true);
-    samples.push(Date.now() - t0);
-  }
-  samples.sort((a, b) => a - b);
-  const median = samples[Math.floor(samples.length / 2)]!;
-  console.log(`typing latency with 10 busy sessions: median ${median} ms, max ${samples.at(-1)} ms`);
+  const busy = await typingLatency(page, 'b');
+  console.log(
+    `typing latency: idle median ${idle.median} ms; with 10 busy sessions median ${busy.median} ms, max ${busy.max} ms`,
+  );
   // "Not noticeable": a generous bound that still catches a blocked UI / IPC flood.
-  expect(median).toBeLessThan(250);
+  expect(busy.median).toBeLessThan(250);
   await app.close();
 });
+
+/**
+ * Key press → its echo is in the focused terminal's buffer, timed inside the window
+ * (from the keydown event) so the test driver's own round trips are not counted.
+ */
+async function typingLatency(page: Page, prefix: string): Promise<{ median: number; max: number }> {
+  const samples: number[] = [];
+  for (let i = 0; i < 10; i++) {
+    const mark = `${prefix}${i}`;
+    await page.evaluate((m) => {
+      const w = window as unknown as {
+        __codedeckTerminalText?: (id: string) => string;
+        __latency?: Promise<number>;
+      };
+      const id = document
+        .querySelector('[data-testid="pane"][data-focused="true"] [data-testid^="terminal-"]')
+        ?.getAttribute('data-testid')
+        ?.slice(9);
+      w.__latency = new Promise<number>((resolve, reject) => {
+        let t0 = 0;
+        const onKey = () => {
+          if (!t0) t0 = performance.now();
+        };
+        window.addEventListener('keydown', onKey, true);
+        const done = (fn: () => void) => {
+          clearInterval(timer);
+          clearTimeout(limit);
+          window.removeEventListener('keydown', onKey, true);
+          fn();
+        };
+        const timer = setInterval(() => {
+          if (t0 && id && w.__codedeckTerminalText?.(id).slice(-4000).includes(m))
+            done(() => resolve(performance.now() - t0));
+        }, 2);
+        const limit = setTimeout(() => done(() => reject(new Error(`no echo of ${m}`))), 5000);
+      });
+    }, mark);
+    await page.keyboard.type(mark);
+    samples.push(
+      Math.round(await page.evaluate(() => (window as unknown as { __latency: Promise<number> }).__latency)),
+    );
+  }
+  samples.sort((a, b) => a - b);
+  return { median: samples[Math.floor(samples.length / 2)]!, max: samples.at(-1)! };
+}
