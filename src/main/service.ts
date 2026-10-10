@@ -12,13 +12,13 @@ import { StatusWatcher } from './sessions/statusWatcher';
 import { STATUS_FILE_ENV, writeHookSettings } from './sessions/hooks';
 import { NoteRepo } from './projects/noteRepo';
 import { ScreenMirror } from './discord/screenMirror';
+import { TaskRepo } from './projects/taskRepo';
+import { PromptRepo } from './prompts/promptRepo';
+import { syncCommands } from './prompts/commandSync';
+import { commitMessageRequest } from './git';
 import { nextActivity, type ActivityEvent } from '@shared/status';
 import { detectLimitMessage, type LimitMessage } from '@shared/usage';
-
-/** Strip escape sequences so messages can be matched across colors and cursor moves. */
-// eslint-disable-next-line no-control-regex
-const ANSI = /\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]/g;
-const TAIL_CHARS = 2000;
+import type { WorkSpan } from '@shared/stats';
 import { authStatus, buildSpawnSpec, resolveClaude, sessionArgs } from './platform/claude';
 import { defaultProfileDir } from './platform/paths';
 import { claudeEnv } from './platform/env';
@@ -35,7 +35,12 @@ import type {
   Session,
 } from '@shared/types';
 
-export type ChangeKind = 'profiles' | 'projects' | 'sessions';
+/** Strip escape sequences so messages can be matched across colors and cursor moves. */
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]/g;
+const TAIL_CHARS = 2000;
+
+export type ChangeKind = 'profiles' | 'projects' | 'sessions' | 'tasks' | 'prompts';
 
 export interface ServiceDeps {
   db: Db;
@@ -62,6 +67,8 @@ export class CodeDeckService {
   readonly sessions: SessionRepo;
   readonly ptys: PtyManager;
   readonly notes: NoteRepo;
+  readonly tasks: TaskRepo;
+  readonly prompts: PromptRepo;
   /** Clean screen text per session for Discord (§6); fed with the same output as the terminal. */
   readonly screens = new ScreenMirror();
   private readonly home: string;
@@ -75,6 +82,8 @@ export class CodeDeckService {
     this.projects = new ProjectRepo(deps.db);
     this.sessions = new SessionRepo(deps.db);
     this.notes = new NoteRepo(deps.db);
+    this.tasks = new TaskRepo(deps.db);
+    this.prompts = new PromptRepo(deps.db);
     this.ptys = new PtyManager({
       onData: (id, data, end) => {
         deps.ptyEvents.onData(id, data, end);
@@ -84,6 +93,7 @@ export class CodeDeckService {
       onState: (id, state, code) => {
         if (state !== 'running') {
           this.status?.end(id);
+          this.endWork(id);
           this.activities.delete(id);
           this.tails.delete(id);
         }
@@ -118,7 +128,33 @@ export class CodeDeckService {
     const next = nextActivity(prev, ev);
     if (next === prev) return;
     this.activities.set(id, next);
+    if (next === 'working') this.workStart.set(id, Date.now());
+    else if (prev === 'working') this.endWork(id);
     this.deps.onActivity?.(id, next, prev);
+  }
+
+  // ---------- work time (statistics, §5) ----------
+
+  private readonly workStart = new Map<string, number>();
+
+  /** Close an open "working" span and record it. */
+  private endWork(id: string): void {
+    const start = this.workStart.get(id);
+    this.workStart.delete(id);
+    if (start === undefined || !this.sessions.get(id)) return;
+    const end = Date.now();
+    if (end - start < 1000) return;
+    this.deps.db
+      .prepare('INSERT INTO work_log (session_id, started_at, ended_at) VALUES (?, ?, ?)')
+      .run(id, start, end);
+  }
+
+  workSpans(since: number): WorkSpan[] {
+    return (
+      this.deps.db
+        .prepare('SELECT session_id, started_at, ended_at FROM work_log WHERE ended_at > ?')
+        .all(since) as { session_id: string; started_at: number; ended_at: number }[]
+    ).map((r) => ({ sessionId: r.session_id, startedAt: r.started_at, endedAt: r.ended_at }));
   }
 
   private readonly tails = new Map<string, string>();
@@ -187,6 +223,8 @@ export class CodeDeckService {
       note: input.note ?? '',
       configDir,
     });
+    // Prompts marked as commands are available in the new profile too.
+    this.syncPromptCommands();
     this.deps.onChange('profiles');
     return p;
   }
@@ -385,6 +423,109 @@ export class CodeDeckService {
     const next = this.sessions.patch(id, { location: 'embedded' });
     this.deps.onChange('sessions');
     return next;
+  }
+
+  // ---------- tasks (§5 タスクバックログ) ----------
+
+  createTask(projectId: string, title: string, body = '') {
+    if (!this.projects.get(projectId)) throw new Error(`project not found: ${projectId}`);
+    const t = this.tasks.create(projectId, title, body);
+    this.deps.onChange('tasks');
+    return t;
+  }
+
+  updateTask(id: string, patch: Parameters<TaskRepo['update']>[1]) {
+    const t = this.tasks.update(id, patch);
+    this.deps.onChange('tasks');
+    return t;
+  }
+
+  removeTask(id: string): void {
+    this.tasks.remove(id);
+    this.deps.onChange('tasks');
+  }
+
+  moveTask(id: string, delta: -1 | 1) {
+    const list = this.tasks.move(id, delta);
+    this.deps.onChange('tasks');
+    return list;
+  }
+
+  /**
+   * Start a task in a new session of its project: the pinned profile (or the one given),
+   * claude is started, and once it waits for input the task is typed in and submitted.
+   */
+  async startTask(id: string, profileId?: string | null, cols = 120, rows = 32): Promise<Session> {
+    const task = this.tasks.get(id);
+    if (!task) throw new Error(`task not found: ${id}`);
+    const project = this.projects.get(task.projectId);
+    if (!project) throw new Error(`project not found: ${task.projectId}`);
+    const pid = profileId || project.pinnedProfileId || this.profiles.list()[0]?.id;
+    if (!pid) throw new Error('task.error.noProfile');
+    const s = this.createSession({
+      profileId: pid,
+      projectId: project.id,
+      cwd: project.path,
+      title: task.title.slice(0, 60),
+    });
+    this.updateTask(id, { status: 'doing', sessionId: s.id });
+    this.startPty(s.id, cols, rows);
+    await this.waitForInput(s.id);
+    const text = task.body.trim() ? `${task.title}\n\n${task.body.trim()}` : task.title;
+    await this.submitText(s.id, text);
+    return s;
+  }
+
+  /** Wait until claude reports it is waiting for input (SessionStart hook), with a time limit. */
+  async waitForInput(id: string, timeoutMs = 30_000): Promise<void> {
+    const until = Date.now() + timeoutMs;
+    while (Date.now() < until) {
+      const a = this.activity(id);
+      if (a === 'waiting' || a === 'done') return;
+      if (!this.ptys.isRunning(id)) throw new Error('session.notRunning');
+      await new Promise((r) => setTimeout(r, 200));
+    }
+  }
+
+  // ---------- prompt library (§5) ----------
+
+  createPrompt(input: { name: string; body: string; asCommand?: boolean }) {
+    const p = this.prompts.create(input);
+    this.syncPromptCommands();
+    this.deps.onChange('prompts');
+    return p;
+  }
+
+  updatePrompt(id: string, patch: Parameters<PromptRepo['update']>[1]) {
+    const p = this.prompts.update(id, patch);
+    this.syncPromptCommands();
+    this.deps.onChange('prompts');
+    return p;
+  }
+
+  removePrompt(id: string): void {
+    this.prompts.remove(id);
+    this.syncPromptCommands();
+    this.deps.onChange('prompts');
+  }
+
+  /** Write "as command" prompts into every profile's commands/codedeck/ (callable as /name in claude). */
+  syncPromptCommands(): void {
+    const prompts = this.prompts.list();
+    for (const p of this.profiles.list()) {
+      try {
+        syncCommands(p.configDir, prompts);
+      } catch {
+        // a profile dir that cannot be written does not block the others
+      }
+    }
+  }
+
+  // ---------- git (§5) ----------
+
+  /** Ask Claude Code in this session to propose a commit message (it does not commit). */
+  async askCommitMessage(sessionId: string): Promise<void> {
+    await this.submitText(sessionId, commitMessageRequest(this.deps.settings.get().locale));
   }
 
   // ---------- notes ----------

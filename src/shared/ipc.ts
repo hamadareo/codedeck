@@ -1,6 +1,11 @@
 import type {
   Activity,
   EnvInfo,
+  ExtensionsInfo,
+  GitStatus,
+  Prompt,
+  Stats,
+  Task,
   NewProfileInput,
   NewProjectInput,
   NewSessionInput,
@@ -76,6 +81,34 @@ export interface InvokeContract {
     result: ProfileUsage | undefined;
   };
   'notify:history': { args: []; result: NotificationRecord[] };
+  'tasks:list': { args: [projectId: string]; result: Task[] };
+  'tasks:create': { args: [projectId: string, title: string, body?: string]; result: Task };
+  'tasks:update': {
+    args: [id: string, patch: Partial<Pick<Task, 'title' | 'body' | 'status'>>];
+    result: Task;
+  };
+  'tasks:remove': { args: [id: string]; result: void };
+  'tasks:move': { args: [id: string, delta: -1 | 1]; result: Task[] };
+  /** Opens a session for the task and sends the task as the first instruction. */
+  'tasks:start': { args: [id: string, profileId?: string | null]; result: Session };
+  'git:status': { args: [cwd: string]; result: GitStatus };
+  'git:diff': { args: [cwd: string, file: string]; result: string };
+  'git:commit': { args: [cwd: string, message: string]; result: { ok: boolean; output: string } };
+  'git:askCommitMessage': { args: [sessionId: string]; result: void };
+  'prompts:list': { args: []; result: Prompt[] };
+  'prompts:create': { args: [input: { name: string; body: string; asCommand?: boolean }]; result: Prompt };
+  'prompts:update': {
+    args: [id: string, patch: Partial<Pick<Prompt, 'name' | 'body' | 'asCommand'>>];
+    result: Prompt;
+  };
+  'prompts:remove': { args: [id: string]; result: void };
+  /** Save dialog → JSON file. Returns the path, or null when cancelled. */
+  'prompts:export': { args: []; result: string | null };
+  /** Open dialog → adds prompts from a JSON file. Returns how many were added. */
+  'prompts:import': { args: []; result: number | null };
+  'extensions:list': { args: [profileId: string, projectDir?: string | null]; result: ExtensionsInfo };
+  'skills:setEnabled': { args: [profileId: string, name: string, enabled: boolean]; result: void };
+  'stats:get': { args: [days: number]; result: Stats };
   'discord:info': { args: []; result: DiscordInfo };
   /** Stores the bot token in the OS keychain. The token is never sent back. */
   'discord:setToken': { args: [token: string]; result: DiscordInfo };
@@ -117,7 +150,7 @@ export interface EventContract {
   'pty:data': [id: string, data: string, end: number];
   'pty:state': [id: string, state: PtyState, exitCode: number | null];
   'activity:changed': [id: string, activity: Activity];
-  'state:changed': [what: 'profiles' | 'projects' | 'sessions'];
+  'state:changed': [what: 'profiles' | 'projects' | 'sessions' | 'tasks' | 'prompts'];
   'settings:changed': [settings: Settings];
   'windows:changed': [popouts: string[]];
   'usage:changed': [usage: ProfileUsage[]];
@@ -171,6 +204,25 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'usage:refresh',
   'usage:setConfig',
   'notify:history',
+  'tasks:list',
+  'tasks:create',
+  'tasks:update',
+  'tasks:remove',
+  'tasks:move',
+  'tasks:start',
+  'git:status',
+  'git:diff',
+  'git:commit',
+  'git:askCommitMessage',
+  'prompts:list',
+  'prompts:create',
+  'prompts:update',
+  'prompts:remove',
+  'prompts:export',
+  'prompts:import',
+  'extensions:list',
+  'skills:setEnabled',
+  'stats:get',
   'discord:info',
   'discord:setToken',
   'discord:clearToken',

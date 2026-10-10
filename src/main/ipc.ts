@@ -1,4 +1,11 @@
+import fs from 'node:fs';
 import os from 'node:os';
+import path from 'node:path';
+import { gitCommitAll, gitDiff, gitStatus } from './git';
+import { listMcp, listSkills, setSkillEnabled } from './extensions';
+import { computeStats } from '@shared/stats';
+import { parsePromptExport, type PromptExport } from '@shared/prompts';
+import { translate } from '@shared/i18n';
 import { execFileSync } from 'node:child_process';
 import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import type { InvokeChannel, InvokeContract, SendChannel, SendContract } from '@shared/ipc';
@@ -42,6 +49,106 @@ export function registerIpc(
   discord: DiscordController,
   discordInfo: () => DiscordInfo,
 ): void {
+  // ---------- Phase 5 ----------
+  handle('tasks:list', (projectId) => svc.tasks.list(projectId));
+  handle('tasks:create', (projectId, title, body) => svc.createTask(projectId, title, body));
+  handle('tasks:update', (id, patch) => svc.updateTask(id, patch));
+  handle('tasks:remove', (id) => svc.removeTask(id));
+  handle('tasks:move', (id, delta) => svc.moveTask(id, delta === -1 ? -1 : 1));
+  handle('tasks:start', (id, profileId) => svc.startTask(id, profileId));
+
+  // git runs only in folders CodeDeck knows (a project or a session's working directory).
+  const knownDir = (cwd: string) => {
+    const norm = (p: string) => path.resolve(p).toLowerCase();
+    const ok =
+      svc.projects.list().some((p) => norm(p.path) === norm(cwd)) ||
+      svc.sessions.list().some((s) => norm(s.cwd) === norm(cwd));
+    if (!ok) throw new Error('git.error.unknownDir');
+    return cwd;
+  };
+  handle('git:status', (cwd) => gitStatus(knownDir(cwd)));
+  handle('git:diff', (cwd, file) => gitDiff(knownDir(cwd), file));
+  handle('git:commit', (cwd, message) => gitCommitAll(knownDir(cwd), message));
+  handle('git:askCommitMessage', (sessionId) => svc.askCommitMessage(sessionId));
+
+  handle('prompts:list', () => svc.prompts.list());
+  handle('prompts:create', (input) => svc.createPrompt(input));
+  handle('prompts:update', (id, patch) => svc.updatePrompt(id, patch));
+  handle('prompts:remove', (id) => svc.removePrompt(id));
+  handle('prompts:export', async function () {
+    const win = BrowserWindow.fromWebContents(this.sender);
+    const opts: Electron.SaveDialogOptions = {
+      defaultPath: 'codedeck-prompts.json',
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    };
+    const r = win ? await dialog.showSaveDialog(win, opts) : await dialog.showSaveDialog(opts);
+    if (r.canceled || !r.filePath) return null;
+    const data: PromptExport = {
+      format: 'codedeck-prompts',
+      version: 1,
+      prompts: svc.prompts.list().map((p) => ({ name: p.name, body: p.body, asCommand: p.asCommand })),
+    };
+    fs.writeFileSync(r.filePath, JSON.stringify(data, null, 2));
+    return r.filePath;
+  });
+  handle('prompts:import', async function () {
+    const win = BrowserWindow.fromWebContents(this.sender);
+    const opts: Electron.OpenDialogOptions = {
+      properties: ['openFile'],
+      filters: [{ name: 'JSON', extensions: ['json'] }],
+    };
+    const r = win ? await dialog.showOpenDialog(win, opts) : await dialog.showOpenDialog(opts);
+    const file = r.filePaths[0];
+    if (r.canceled || !file) return null;
+    const incoming = parsePromptExport(fs.readFileSync(file, 'utf8'));
+    const existing = new Set(svc.prompts.list().map((p) => p.name.toLowerCase()));
+    let added = 0;
+    for (const p of incoming) {
+      // Same name already there: keep the user's version, add the import with a suffix.
+      let name = p.name;
+      for (let n = 2; existing.has(name.toLowerCase()); n++) name = `${p.name} (${n})`;
+      svc.prompts.create({ ...p, name });
+      existing.add(name.toLowerCase());
+      added++;
+    }
+    svc.syncPromptCommands();
+    wm.broadcast('state:changed', 'prompts');
+    return added;
+  });
+
+  handle('extensions:list', async (profileId, projectDir) => {
+    const p = svc.profiles.get(profileId);
+    if (!p) throw new Error(`profile not found: ${profileId}`);
+    const dir = projectDir ? knownDir(projectDir) : null;
+    const mcp = await listMcp(p.configDir, dir ?? os.homedir());
+    return { mcp: mcp.servers, mcpError: mcp.error, skills: listSkills(p.configDir, dir) };
+  });
+  handle('skills:setEnabled', (profileId, name, enabled) => {
+    const p = svc.profiles.get(profileId);
+    if (!p) throw new Error(`profile not found: ${profileId}`);
+    setSkillEnabled(p.configDir, name, enabled);
+  });
+
+  handle('stats:get', (days) => {
+    const d = days === 7 || days === 30 ? days : 7;
+    const now = Date.now();
+    const locale = settings.get().locale;
+    return computeStats({
+      days: d,
+      now,
+      tzOffsetMin: new Date().getTimezoneOffset(),
+      entries: usage.allEntries(),
+      sessions: svc.sessions.list(),
+      projects: svc.projects.list(),
+      profiles: svc.profiles.list(),
+      work: svc.workSpans(now - d * 24 * 3_600_000),
+      labels: {
+        outside: translate(locale, 'stats.outside'),
+        noProject: translate(locale, 'stats.noProject'),
+      },
+    });
+  });
+
   handle('discord:info', () => discordInfo());
   handle('discord:setToken', async (token) => {
     await discord.setToken(token);

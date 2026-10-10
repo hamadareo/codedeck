@@ -6,6 +6,8 @@
 export interface UsageEntry {
   ts: number;
   tokens: number;
+  /** Conversation id (the transcript file name) — CodeDeck's session id for its own sessions. */
+  session?: string;
 }
 
 export const HOUR = 3_600_000;

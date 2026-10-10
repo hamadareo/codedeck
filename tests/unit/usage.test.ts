@@ -146,7 +146,8 @@ describe('TranscriptScanner', () => {
     // The same message copied into a resumed transcript must not count twice.
     fs.writeFileSync(path.join(proj, 'sub', 'b.jsonl'), `${line(T0, { in: 10, out: 5 }, 'm1')}\n`);
     const s = new TranscriptScanner(dir);
-    expect(s.scan(T0 + HOUR)).toEqual([{ ts: T0, tokens: 15 }]);
+    // Only usage numbers and the conversation id (file name) are kept.
+    expect(s.scan(T0 + HOUR)).toEqual([{ ts: T0, tokens: 15, session: 'a' }]);
     // Partial line: counted once it is complete.
     const next = line(T0 + 60_000, { out: 7 }, 'm2');
     fs.appendFileSync(a, next.slice(0, 20));

@@ -75,6 +75,35 @@ const MIGRATIONS: string[] = [
     thread_id TEXT NOT NULL
   );
   `,
+  // v5: task backlog, prompt library, work time (§5)
+  `
+  CREATE TABLE tasks (
+    id TEXT PRIMARY KEY,
+    project_id TEXT NOT NULL REFERENCES projects(id) ON DELETE CASCADE,
+    title TEXT NOT NULL,
+    body TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'todo' CHECK (status IN ('todo','doing','done')),
+    session_id TEXT REFERENCES sessions(id) ON DELETE SET NULL,
+    sort INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE prompts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    body TEXT NOT NULL,
+    as_command INTEGER NOT NULL DEFAULT 0,
+    sort INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
+  CREATE TABLE work_log (
+    session_id TEXT NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
+    started_at INTEGER NOT NULL,
+    ended_at INTEGER NOT NULL
+  );
+  CREATE INDEX work_log_session ON work_log(session_id);
+  `,
 ];
 
 export type Db = DatabaseSync;

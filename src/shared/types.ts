@@ -47,6 +47,88 @@ export interface Session {
 
 export type PtyState = 'idle' | 'running' | 'exited';
 
+export type TaskStatus = 'todo' | 'doing' | 'done';
+
+export interface Task {
+  id: string;
+  projectId: string;
+  title: string;
+  body: string;
+  status: TaskStatus;
+  sessionId: string | null;
+  sort: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface Prompt {
+  id: string;
+  name: string;
+  body: string;
+  /** Also written as a Claude Code custom command, callable as /name inside claude. */
+  asCommand: boolean;
+  sort: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface GitFile {
+  path: string;
+  /** 'M' modified, 'A' added, 'D' deleted, 'R' renamed, '?' untracked, 'U' conflict. */
+  status: 'M' | 'A' | 'D' | 'R' | '?' | 'U';
+  added: number | null;
+  deleted: number | null;
+}
+
+export interface GitStatus {
+  isRepo: boolean;
+  branch: string | null;
+  ahead: number;
+  behind: number;
+  files: GitFile[];
+}
+
+export interface McpServerInfo {
+  name: string;
+  target: string;
+  status: 'connected' | 'failed' | 'needs-auth' | 'unknown';
+  detail: string;
+}
+
+export interface SkillInfo {
+  name: string;
+  description: string;
+  enabled: boolean;
+  /** 'profile' = the profile's config dir (can be toggled here); 'project' = <cwd>/.claude/skills. */
+  scope: 'profile' | 'project';
+}
+
+export interface ExtensionsInfo {
+  mcp: McpServerInfo[];
+  /** null when `claude mcp list` could not run. */
+  mcpError: string | null;
+  skills: SkillInfo[];
+}
+
+export interface StatsRow {
+  key: string;
+  label: string;
+  tokens: number;
+  sessions: number;
+  workMs: number;
+}
+
+export interface Stats {
+  days: number;
+  byProject: StatsRow[];
+  byProfile: StatsRow[];
+  /** Tokens per day, oldest first (local dates "YYYY-MM-DD"). */
+  daily: { date: string; tokens: number }[];
+  totalTokens: number;
+  totalSessions: number;
+  totalWorkMs: number;
+}
+
 /** What claude is doing, reported by CodeDeck's hooks (docs/phase2-plan.md). */
 export type Activity = 'unknown' | 'working' | 'waiting' | 'approval' | 'done' | 'error' | 'limit';
 

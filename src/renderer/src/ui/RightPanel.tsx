@@ -1,7 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Profile, Project, RightPanelTab } from '@shared/types';
+import type { Profile, Project, RightPanelTab, Session } from '@shared/types';
 import type { ProfileUsage } from '@shared/usage';
 import { UsagePanel } from './usage';
+import { TasksPanel } from './TasksPanel';
+import { DiffPanel } from './DiffPanel';
 import { api } from '../api';
 import { useT } from '../i18n';
 import { pasteInto } from '../terminal/registry';
@@ -9,14 +11,16 @@ import { Button } from './Modal';
 
 const TABS: RightPanelTab[] = ['notes', 'diff', 'tasks', 'usage'];
 
-/** Collapsible right panel (§4): notes now; diff, tasks and usage arrive in later phases. */
+/** Collapsible right panel (§4): notes, git diff, tasks, usage. */
 export function RightPanel(props: {
   tab: RightPanelTab;
   width: number;
   project: Project | null;
   activeSessionId: string | null;
+  activeSession: Session | null;
   profiles: Profile[];
   usage: ProfileUsage[];
+  onSelectSession(id: string): void;
   onTab(tab: RightPanelTab): void;
   onClose(): void;
   onResize(width: number): void;
@@ -87,8 +91,15 @@ export function RightPanel(props: {
           )
         ) : props.tab === 'usage' ? (
           <UsagePanel profiles={props.profiles} usage={props.usage} />
+        ) : props.tab === 'tasks' ? (
+          <TasksPanel
+            project={props.project}
+            profiles={props.profiles}
+            onStarted={props.onSelectSession}
+            onSelectSession={props.onSelectSession}
+          />
         ) : (
-          <p className="text-muted">{t(`panel.soon.${props.tab}`)}</p>
+          <DiffPanel session={props.activeSession} />
         )}
       </div>
     </aside>

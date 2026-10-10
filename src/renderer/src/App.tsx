@@ -16,12 +16,18 @@ import {
   toggleMaximize,
 } from '@shared/layout';
 import { displayStatus } from '@shared/status';
-import type { Layout, Profile, Project, Session, SessionStatus, SplitDir } from '@shared/types';
+import type { Layout, Profile, Project, Prompt, Session, SessionStatus, SplitDir } from '@shared/types';
 import { api, errorKey } from './api';
 import { LocaleContext, useT } from './i18n';
 import { saveSettings, SettingsContext, useSettings, useSettingsValue } from './settings';
 import { useAppData, useSeen } from './useAppData';
-import { disposeTerminal, focusTerminal, setAppActionHandler, setPlatform } from './terminal/registry';
+import {
+  disposeTerminal,
+  focusTerminal,
+  pasteInto,
+  setAppActionHandler,
+  setPlatform,
+} from './terminal/registry';
 import { Sidebar } from './ui/Sidebar';
 import { TabBar } from './ui/TabBar';
 import { PaneArea } from './ui/PaneArea';
@@ -39,6 +45,14 @@ import {
 import { Button, ConfirmDialog } from './ui/Modal';
 import { NotificationBanners } from './ui/usage';
 import { DiscordDialog, RemoteInputToasts } from './ui/DiscordDialog';
+import {
+  ExtensionsDialog,
+  PromptInsertDialog,
+  PromptLibraryDialog,
+  StatsDialog,
+  usePrompts,
+} from './ui/manage';
+import { useBranch } from './ui/DiffPanel';
 
 type Dialog =
   | { kind: 'addProfile' }
@@ -53,6 +67,10 @@ type Dialog =
   | { kind: 'palette' }
   | { kind: 'settings' }
   | { kind: 'discord' }
+  | { kind: 'prompts' }
+  | { kind: 'promptInsert'; prompt: Prompt }
+  | { kind: 'extensions'; profileId: string | null }
+  | { kind: 'stats' }
   | null;
 
 const CLAUDE_SETUP_URL = 'https://code.claude.com/docs/en/setup';
@@ -92,6 +110,7 @@ function Shell() {
   const [dialog, setDialog] = useState<Dialog>(null);
   const [notice, setNotice] = useState<string | null>(null);
   const statusOf = useStatusOf(data);
+  const prompts = usePrompts();
 
   const tabs = useMemo(() => sessions.filter((s) => s.open), [sessions]);
   const sessionById = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
@@ -268,9 +287,29 @@ function Shell() {
     }
   };
 
+  /** A session the user picked from elsewhere (a task): load it before showing it. */
+  const showNewSession = useCallback(
+    async (id: string) => {
+      await data.refresh('sessions');
+      selectSession(id);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [selectSession],
+  );
+
   const paletteEntries = useMemo((): PaletteEntry[] => {
     if (!settings) return [];
     const out: PaletteEntry[] = [];
+    for (const p of prompts) {
+      out.push({
+        id: `prompt:${p.id}`,
+        group: 'command',
+        label: t('prompts.paletteLabel', { name: p.name }),
+        detail: p.body.replace(/\s+/g, ' ').slice(0, 60),
+        keywords: 'prompt プロンプト',
+        run: () => setDialog({ kind: 'promptInsert', prompt: p }),
+      });
+    }
     for (const s of tabs) {
       const p = profileById.get(s.profileId);
       out.push({
@@ -360,6 +399,11 @@ function Shell() {
     });
     out.push(
       setting('discord', t('discord.open'), () => setDialog({ kind: 'discord' })),
+      setting('prompts', t('prompts.title'), () => setDialog({ kind: 'prompts' })),
+      setting('extensions', t('ext.title'), () =>
+        setDialog({ kind: 'extensions', profileId: active?.profileId ?? null }),
+      ),
+      setting('stats', t('stats.title'), () => setDialog({ kind: 'stats' })),
       setting(
         'open',
         t('cmd.settings'),
@@ -416,8 +460,10 @@ function Shell() {
     runAction,
     selectSession,
     toggleRightPanel,
+    prompts,
   ]);
 
+  const branch = useBranch(active?.cwd ?? null);
   const showOnboarding = data.loaded && (profiles.length === 0 || tabs.length === 0);
   const rightPanel = settings?.rightPanel;
   const activeProject = active?.projectId ? (projects.find((p) => p.id === active.projectId) ?? null) : null;
@@ -515,6 +561,29 @@ function Shell() {
               >
                 ▥
               </button>
+              {(
+                [
+                  ['prompts', '❝', t('prompts.title'), () => setDialog({ kind: 'prompts' })],
+                  [
+                    'extensions',
+                    '⧉',
+                    t('ext.title'),
+                    () => setDialog({ kind: 'extensions', profileId: active?.profileId ?? null }),
+                  ],
+                  ['stats', '▤', t('stats.title'), () => setDialog({ kind: 'stats' })],
+                ] as const
+              ).map(([id, icon, label, run]) => (
+                <button
+                  key={id}
+                  className="rounded px-2 py-1 text-muted hover:bg-panel-2 hover:text-fg"
+                  onClick={run}
+                  title={label}
+                  aria-label={label}
+                  data-testid={`open-${id}`}
+                >
+                  {icon}
+                </button>
+              ))}
               <button
                 className="rounded px-2 py-1 text-muted hover:bg-panel-2 hover:text-fg"
                 onClick={() => setDialog({ kind: 'settings' })}
@@ -568,6 +637,8 @@ function Shell() {
                 width={rightPanel.width}
                 project={activeProject}
                 activeSessionId={activeId}
+                activeSession={active}
+                onSelectSession={(id) => void showNewSession(id)}
                 profiles={profiles}
                 usage={data.usage}
                 onTab={(tab) => void saveSettings({ rightPanel: { ...rightPanel, tab } })}
@@ -581,6 +652,43 @@ function Shell() {
 
       <NotificationBanners />
       <RemoteInputToasts sessions={sessions} onSelect={selectSession} />
+      {dialog?.kind === 'prompts' && <PromptLibraryDialog onClose={() => setDialog(null)} />}
+      {dialog?.kind === 'promptInsert' && (
+        <PromptInsertDialog
+          prompt={dialog.prompt}
+          context={{
+            project: activeProject?.name ?? '',
+            cwd: active?.cwd ?? '',
+            branch: branch ?? '',
+            profile: active ? (profileById.get(active.profileId)?.name ?? '') : '',
+          }}
+          canPaste={!!active && active.location === 'embedded' && data.ptyStates[active.id] === 'running'}
+          onPaste={(text) => active && pasteInto(active.id, text)}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'extensions' && (
+        <ExtensionsDialog
+          profiles={profiles}
+          initialProfileId={dialog.profileId}
+          projectDir={activeProject?.path ?? null}
+          sessions={sessions}
+          onOpenMcp={(profileId) => {
+            setDialog(null);
+            // Claude Code's own MCP screen, in an open session of that profile (or a new one).
+            const s = tabs.find((x) => x.profileId === profileId && data.ptyStates[x.id] === 'running');
+            if (s) {
+              selectSession(s.id);
+              // Typed into the input only; the user presses Enter.
+              requestAnimationFrame(() => pasteInto(s.id, '/mcp'));
+            } else {
+              setNotice(t('ext.noSessionForMcp'));
+            }
+          }}
+          onClose={() => setDialog(null)}
+        />
+      )}
+      {dialog?.kind === 'stats' && <StatsDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === 'discord' && settings && (
         <DiscordDialog settings={settings.discord} onClose={() => setDialog(null)} />
       )}

@@ -1,9 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { SEVEN_DAYS, type UsageEntry } from '@shared/usage';
+import type { UsageEntry } from '@shared/usage';
 
-/** Entries older than this are dropped from memory (7-day window + margin). */
-const KEEP_MS = SEVEN_DAYS + 24 * 3_600_000;
+/** Entries older than this are dropped from memory (30-day statistics + margin). */
+const KEEP_MS = 31 * 24 * 3_600_000;
 const MAX_DEPTH = 4;
 
 interface FileState {
@@ -58,7 +58,8 @@ export class TranscriptScanner {
       const text = st.partial + buf.toString('utf8');
       const lines = text.split('\n');
       const partial = lines.pop() ?? '';
-      for (const line of lines) this.take(line, now);
+      const session = path.basename(file, '.jsonl');
+      for (const line of lines) this.take(line, now, session);
       this.files.set(file, { offset: stat.size, partial, mtimeMs: stat.mtimeMs });
     } catch {
       // being written / removed: try again next scan
@@ -67,7 +68,7 @@ export class TranscriptScanner {
     }
   }
 
-  private take(line: string, now: number): void {
+  private take(line: string, now: number, session: string): void {
     // Cheap pre-filter before JSON.parse; most lines are not assistant messages.
     if (!line.includes('"assistant"') || !line.includes('"usage"')) return;
     const e = parseUsageLine(line);
@@ -76,7 +77,7 @@ export class TranscriptScanner {
       if (this.seen.has(e.key)) return;
       this.seen.add(e.key);
     }
-    this.entries.push({ ts: e.ts, tokens: e.tokens });
+    this.entries.push({ ts: e.ts, tokens: e.tokens, session });
   }
 }
 

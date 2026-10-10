@@ -23,6 +23,12 @@ if (args[0] === 'auth' && args[1] === 'status') {
   process.exit(0);
 }
 
+if (args[0] === 'mcp' && args[1] === 'list') {
+  console.log('Checking MCP server health…\n');
+  console.log('fake-docs: https://example.com/mcp - ✔ Connected');
+  process.exit(0);
+}
+
 const settingsIdx = args.indexOf('--settings');
 const settings =
   settingsIdx >= 0 ? JSON.parse(fs.readFileSync(args[settingsIdx + 1], 'utf8')) : { hooks: {} };

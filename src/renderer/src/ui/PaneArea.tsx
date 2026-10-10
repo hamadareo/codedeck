@@ -6,6 +6,7 @@ import { TerminalView } from '../terminal/TerminalView';
 import { ProfileBadge, SessionStatusLabel } from './badges';
 import { Button } from './Modal';
 import { DND_PANE, DND_SESSION } from './TabBar';
+import { useBranch } from './DiffPanel';
 
 export interface PaneHandlers {
   onFocusPane(paneId: string): void;
@@ -146,6 +147,7 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
   const maximized = layout.maximizedPaneId === paneId;
   const poppedOut = !!session && props.popouts.includes(session.id);
   const [dropping, setDropping] = useState(false);
+  const branch = useBranch(session?.cwd ?? null);
   const multiple = layout.root.kind === 'split';
 
   const onDrop = (e: React.DragEvent) => {
@@ -199,6 +201,15 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
             <ProfileBadge profile={profile} small />
             <span className="min-w-0 truncate font-medium">{session.title}</span>
             <SessionStatusLabel status={props.statusOf(session.id)} />
+            {branch && (
+              <span
+                className="font-path shrink-0 text-muted"
+                title={`git: ${branch}`}
+                data-testid="pane-branch"
+              >
+                ⎇ {branch}
+              </span>
+            )}
             <span className="font-path min-w-0 flex-1 truncate text-muted" title={session.cwd}>
               {session.cwd}
             </span>

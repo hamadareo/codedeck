@@ -55,7 +55,10 @@ export function useAppData(): AppData {
 
   useEffect(() => {
     const offs = [
-      api.on('state:changed', (what) => void refresh(what)),
+      // Tasks and prompts are loaded by the panels that show them.
+      api.on('state:changed', (what) => {
+        if (what === 'profiles' || what === 'projects' || what === 'sessions') void refresh(what);
+      }),
       api.on('pty:state', (id, state, code) => {
         setPtyStates((s) => ({ ...s, [id]: state }));
         if (state === 'exited') setExitCodes((c) => ({ ...c, [id]: code }));

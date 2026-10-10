@@ -12,6 +12,7 @@ import {
   type Plan,
   type ProfileUsage,
   type UsageConfig,
+  type UsageEntry,
   type UsageWindow,
 } from '@shared/usage';
 import { TranscriptScanner } from './transcriptScanner';
@@ -196,6 +197,12 @@ export class UsageService {
       );
     }
     this.refreshAll();
+  }
+
+  /** All kept entries per profile (statistics, §5). */
+  allEntries(): Map<string, UsageEntry[]> {
+    const now = this.now();
+    return new Map(this.deps.profiles().map((p) => [p.id, this.entries(p.id, p.configDir, now)]));
   }
 
   // ---------- computation ----------
