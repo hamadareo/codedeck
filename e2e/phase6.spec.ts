@@ -100,7 +100,14 @@ test('typing stays responsive with 10 busy sessions (§4)', async () => {
     }
     return out;
   });
-  await page.waitForTimeout(2000);
+  // Measure output load, not startup: wait until every session is ready (its SessionStart hook ran).
+  await expect(
+    page
+      .getByTestId('session-tab')
+      .getByTestId('session-status')
+      .and(page.locator('[data-status="waiting"]')),
+  ).toHaveCount(10, { timeout: 60_000 });
+  await page.waitForTimeout(1000);
   await page.evaluate((list) => {
     const api = (window as unknown as { codedeck: { send(c: string, ...a: unknown[]): void } }).codedeck;
     for (const id of list) api.send('pty:input', id, 'spam\r');
