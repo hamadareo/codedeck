@@ -37,9 +37,19 @@ export function useSandbox(label: string): () => Sandbox {
   test.beforeEach(() => {
     sb = makeSandbox(label);
   });
-  test.afterEach(() => sb?.cleanup());
+  test.afterEach(({}, info) => {
+    // On failure, show what the app printed (main process output): CI-only crashes need it.
+    if (info.status !== info.expectedStatus && appOutput.length) {
+      console.log(`--- app output (last ${Math.min(appOutput.length, 60)} lines) ---`);
+      console.log(appOutput.slice(-60).join('\n'));
+    }
+    appOutput.length = 0;
+    sb?.cleanup();
+  });
   return () => sb!;
 }
+
+const appOutput: string[] = [];
 
 export async function launch(sb: Sandbox): Promise<{ app: ElectronApplication; page: Page }> {
   // CODEDECK_E2E_EXECUTABLE runs the same flow against a packaged build.
@@ -63,6 +73,17 @@ export async function launch(sb: Sandbox): Promise<{ app: ElectronApplication; p
       CODEDECK_DISCORD_OFFLINE: '1',
     } as Record<string, string>,
   });
+  const keep = (prefix: string) => (b: Buffer) =>
+    appOutput.push(
+      ...b
+        .toString()
+        .split(/\r?\n/)
+        .filter(Boolean)
+        .map((l) => `${prefix} ${l}`),
+    );
+  app.process().stdout?.on('data', keep('[out]'));
+  app.process().stderr?.on('data', keep('[err]'));
+  app.process().on('exit', (code, signal) => appOutput.push(`[exit] code=${code} signal=${signal}`));
   // Restored pop-out windows open right after the main one and may come first: pick the main window.
   const isMain = async (w: Page) => {
     await w.waitForLoadState('domcontentloaded');
