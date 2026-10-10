@@ -4,6 +4,7 @@
  */
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
+import * as pty from 'node-pty';
 import { addProfile, addProject, expectTerminal, launch, root, useSandbox } from './helpers';
 
 const sandbox = useSandbox('phase6');
@@ -107,11 +108,15 @@ test('typing stays responsive with 10 busy sessions (§4)', async () => {
   await page.waitForTimeout(1000);
 
   const busy = await typingLatency(page, 'b');
+  // Control, under the same load: the same CLI in a bare PTY outside CodeDeck. What the OS
+  // itself takes to echo a key (on a 2-core CI runner, mostly waiting for a free CPU).
+  const bare = await bareEchoLatency(sb.tmp);
   console.log(
-    `typing latency: idle median ${idle.median} ms; with 10 busy sessions median ${busy.median} ms, max ${busy.max} ms`,
+    `typing latency: idle median ${idle.median} ms; with 10 busy sessions median ${busy.median} ms, max ${busy.max} ms; bare PTY under the same load median ${bare.median} ms`,
   );
-  // "Not noticeable": a generous bound that still catches a blocked UI / IPC flood.
-  expect(busy.median).toBeLessThan(250);
+  // "Not noticeable": a generous bound that still catches a blocked UI / IPC flood. On a machine
+  // that is itself saturated, CodeDeck may add at most 100 ms to what a bare PTY takes.
+  expect(busy.median).toBeLessThan(Math.max(250, bare.median + 100));
   await app.close();
 });
 
@@ -158,4 +163,43 @@ async function typingLatency(page: Page, prefix: string): Promise<{ median: numb
   }
   samples.sort((a, b) => a - b);
   return { median: samples[Math.floor(samples.length / 2)]!, max: samples.at(-1)! };
+}
+
+/** Key → echo through a bare PTY running the fake CLI, timed in the test process. */
+async function bareEchoLatency(dir: string): Promise<{ median: number }> {
+  const proc = pty.spawn(process.execPath, [path.join(root, 'e2e', 'fixtures', 'fake-claude.mjs')], {
+    cols: 120,
+    rows: 30,
+    cwd: dir,
+    env: { ...process.env, CLAUDE_CONFIG_DIR: path.join(dir, 'bare') } as Record<string, string>,
+    useConpty: true,
+    useConptyDll: process.platform === 'win32',
+  });
+  let out = '';
+  proc.onData((d) => (out += d));
+  const waitFor = (text: string, ms = 10_000) =>
+    new Promise<void>((resolve, reject) => {
+      const t0 = Date.now();
+      const tick = () => {
+        if (out.includes(text)) resolve();
+        else if (Date.now() - t0 > ms) reject(new Error(`bare PTY: no ${text}`));
+        else setTimeout(tick, 2);
+      };
+      tick();
+    });
+  try {
+    await waitFor('> ');
+    const samples: number[] = [];
+    for (let i = 0; i < 10; i++) {
+      const mark = `c${i}`;
+      const t0 = performance.now();
+      proc.write(mark);
+      await waitFor(mark);
+      samples.push(Math.round(performance.now() - t0));
+    }
+    samples.sort((a, b) => a - b);
+    return { median: samples[Math.floor(samples.length / 2)]! };
+  } finally {
+    proc.kill();
+  }
 }

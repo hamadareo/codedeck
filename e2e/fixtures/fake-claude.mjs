@@ -83,9 +83,9 @@ function onInput(d) {
       return;
     }
     if (typed === 'spam') {
-      // Heavy output for the performance test: ~30 KB/s of colored lines for 8 seconds
+      // Heavy output for the performance test: ~30 KB/s of colored lines for 15 seconds
       // (well above claude's own streaming rate), in many small writes.
-      const until = Date.now() + 8000;
+      const until = Date.now() + 15_000;
       let n = 0;
       const timer = setInterval(() => {
         let chunk = '';
