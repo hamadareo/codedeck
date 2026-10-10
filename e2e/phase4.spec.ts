@@ -32,6 +32,8 @@ test('Discord setup: token kept in the keychain only; settings validated', async
   await page.getByTestId('discord-guild').fill('123456789012345678');
   await page.getByTestId('discord-channel').fill('223456789012345678');
   await page.getByTestId('discord-allowed').fill('323456789012345678, not-an-id');
+  // A user name instead of an ID is pointed out, not silently dropped.
+  await expect(page.getByTestId('discord-allowed-invalid')).toContainText('not-an-id');
   await page.getByTestId('discord-token').fill(TOKEN);
   await page.getByTestId('discord-token-save').click();
 
@@ -66,6 +68,13 @@ test('Discord setup: token kept in the keychain only; settings validated', async
   await expect(page.getByTestId('discord-token-state')).toContainText('保存済み');
   await page.getByText('トークンを削除').click();
   await expect(page.getByTestId('discord-token-state')).toHaveText('未設定');
+  // Closing with Esc right after typing still saves the field being edited.
+  await page.getByTestId('discord-allowed').fill('323456789012345678, 423456789012345678');
+  await page.keyboard.press('Escape');
+  await expect(page.getByTestId('discord-allowed')).toHaveCount(0);
   await app.close();
   expect(fs.existsSync(path.join(sb.userData, 'discord-token.bin'))).toBe(false);
+  expect(
+    JSON.parse(fs.readFileSync(path.join(sb.userData, 'settings.json'), 'utf8')).discord.allowedUserIds,
+  ).toEqual(['323456789012345678', '423456789012345678']);
 });

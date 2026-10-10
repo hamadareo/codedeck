@@ -1,5 +1,5 @@
-import { useEffect, useState } from 'react';
-import { parseIdList, type DiscordSettings } from '@shared/discord';
+import { useEffect, useRef, useState } from 'react';
+import { isSnowflake, parseIdList, type DiscordSettings } from '@shared/discord';
 import type { DiscordInfo, RemoteInput } from '@shared/ipc';
 import type { Session } from '@shared/types';
 import { api, errorKey } from '../api';
@@ -36,6 +36,14 @@ export function DiscordDialog({ settings, onClose }: { settings: DiscordSettings
       allowedUserIds: parseIdList(allowed),
       mentionUserId: mention.trim(),
     });
+  // Fields save when they lose focus; closing the dialog (Esc, ✕) saves what is still being edited.
+  const saveRef = useRef(saveIds);
+  saveRef.current = saveIds;
+  useEffect(() => () => saveRef.current(), []);
+  const invalidIds = allowed
+    .split(/[\s,、]+/)
+    .map((x) => x.trim())
+    .filter((x) => x && !isSnowflake(x));
 
   const status = info?.status ?? { state: 'off' as const };
   const statusText =
@@ -184,6 +192,16 @@ export function DiscordDialog({ settings, onClose }: { settings: DiscordSettings
           onBlur={saveIds}
           data-testid="discord-allowed"
         />
+        {invalidIds.length > 0 && (
+          <p role="alert" className="mt-1 text-xs text-danger" data-testid="discord-allowed-invalid">
+            {t('discord.allowedInvalid', { items: invalidIds.join(', ') })}
+          </p>
+        )}
+        {settings.enabled && invalidIds.length === 0 && parseIdList(allowed).length === 0 && (
+          <p className="mt-1 text-xs text-warn" data-testid="discord-allowed-empty">
+            {t('discord.allowedEmpty')}
+          </p>
+        )}
       </Field>
 
       <fieldset className="space-y-1">

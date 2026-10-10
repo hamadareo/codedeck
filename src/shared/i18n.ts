@@ -530,6 +530,9 @@ const ja = {
   'discord.channelId': 'チャンネル ID(セッションごとのスレッドと使用量の通知)',
   'discord.allowed': '操作を許可するユーザー ID(カンマ区切り)',
   'discord.allowedHint': 'ここにないユーザーのコマンドとボタンは無視し、ログに記録します。',
+  'discord.allowedInvalid':
+    'ユーザー ID ではないため無視します: {items}(ユーザー名ではなく、17〜20桁の数字です)',
+  'discord.allowedEmpty': '許可するユーザーがいないため、Discord からの操作はすべて無視されます。',
   'discord.perms': '許可する操作',
   'discord.perm.send': '指示の送信(/send)',
   'discord.perm.approve': '承認ボタン(許可 / 拒否)',
@@ -1073,6 +1076,8 @@ const en: Record<MessageKey, string> = {
   'discord.channelId': 'Channel ID (session threads and usage alerts)',
   'discord.allowed': 'User IDs allowed to operate (comma-separated)',
   'discord.allowedHint': 'Commands and buttons from anyone else are ignored and logged.',
+  'discord.allowedInvalid': 'Ignored, not user IDs: {items} (a user ID is 17-20 digits, not a user name)',
+  'discord.allowedEmpty': 'No one is allowed yet, so every command from Discord is ignored.',
   'discord.perms': 'Allowed operations',
   'discord.perm.send': 'Send instructions (/send)',
   'discord.perm.approve': 'Approval buttons (Allow / Deny)',
