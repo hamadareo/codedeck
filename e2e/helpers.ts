@@ -1,4 +1,5 @@
 import fs from 'node:fs';
+import { spawn } from 'node:child_process';
 import os from 'node:os';
 import path from 'node:path';
 import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
@@ -16,11 +17,18 @@ export function makeSandbox(label: string) {
     userData: path.join(tmp, 'userData'),
     projectDir: path.join(tmp, 'my project'),
     cleanup() {
-      try {
-        fs.rmSync(tmp, { recursive: true, force: true, maxRetries: 5, retryDelay: 500 });
-      } catch {
-        // Windows may hold the dir a little longer after the app exits; the OS temp dir is cleaned anyway.
-      }
+      // Not fs.rmSync in this process: on Windows, Node's native recursive delete can abort the
+      // whole test worker (0xC0000409) when files are still held by exiting PTY/hook processes.
+      // A detached helper deletes the folder once they let go; the OS temp dir catches the rest.
+      const child = isWin
+        ? // Verbatim: `cmd /s /c "<line>"` keeps the quoted path (spaces, Japanese) intact.
+          spawn(
+            process.env.ComSpec || 'cmd.exe',
+            ['/d', '/s', '/c', `"ping -n 4 127.0.0.1 >nul & rmdir /s /q "${tmp}""`],
+            { detached: true, stdio: 'ignore', windowsHide: true, windowsVerbatimArguments: true },
+          )
+        : spawn('/bin/sh', ['-c', 'sleep 1; rm -rf "$0"', tmp], { detached: true, stdio: 'ignore' });
+      child.unref();
     },
   };
   fs.mkdirSync(sb.home, { recursive: true });

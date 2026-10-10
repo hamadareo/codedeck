@@ -177,7 +177,11 @@ if (!gotLock) {
       tray.destroy();
       svc?.shutdown();
     };
-    app.on('before-quit', shutdown);
+    app.on('before-quit', () => {
+      // Keep the list of pop-outs as it is now, so they come back after the restart.
+      wm.setQuitting();
+      shutdown();
+    });
     app.on('window-all-closed', () => {
       shutdown();
       app.quit();

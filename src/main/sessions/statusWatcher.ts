@@ -54,7 +54,11 @@ export class StatusWatcher {
 
   remove(sessionId: string): void {
     this.offsets.delete(sessionId);
-    fs.rmSync(this.fileFor(sessionId), { force: true });
+    try {
+      fs.unlinkSync(this.fileFor(sessionId));
+    } catch {
+      // already gone, or still open by a hook: harmless leftover
+    }
   }
 
   read(sessionId: string): void {

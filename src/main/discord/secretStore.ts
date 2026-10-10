@@ -49,6 +49,10 @@ export class SecretStore {
   }
 
   clear(): void {
-    fs.rmSync(this.file, { force: true });
+    try {
+      fs.unlinkSync(this.file);
+    } catch (e) {
+      if ((e as NodeJS.ErrnoException).code !== 'ENOENT') throw e;
+    }
   }
 }

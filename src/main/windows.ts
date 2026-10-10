@@ -30,6 +30,14 @@ export class WindowManager {
     return { kind: 'main' };
   }
 
+  /**
+   * The app is quitting: windows closing from now on must not be recorded as
+   * "closed by the user" (macOS may close a pop-out before the main window).
+   */
+  setQuitting(): void {
+    this.quitting = true;
+  }
+
   popoutIds(): string[] {
     return [...this.popouts.keys()];
   }
