@@ -380,6 +380,12 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
 
   it('approval buttons: a post with Allow / Deny; Allow answers the prompt', async () => {
     await until(() => svc.activity(sessionId) === 'waiting' || svc.activity(sessionId) === 'done');
+    // The previous turn has ended on screen too (hooks can lag behind the output on slow machines):
+    // "perm" must start a new input line, as a user's would.
+    await until(async () => {
+      const lines = (await screen()).split('\n').filter((l) => l.trim());
+      return lines.at(-1)?.trim() === '>' && !!lines.at(-2)?.includes('FAKE-CLAUDE done');
+    });
     await command('send', { session: 'job', text: 'perm' });
     await until(() => svc.activity(sessionId) === 'approval');
     await until(() => transport.posts.some((p) => p.msg.content.includes('承認待ち: job')));
