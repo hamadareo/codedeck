@@ -33,6 +33,8 @@ interface Entry {
   proc: pty.IPty | null;
   state: PtyState;
   chunks: string[];
+  /** Index of the oldest chunk still kept (dropped ones are compacted away now and then). */
+  head: number;
   kept: number;
   /** Total chars ever produced by this session's current process; the stream offset. */
   total: number;
@@ -98,6 +100,7 @@ export class PtyManager {
       proc,
       state: 'running',
       chunks: prev?.chunks ?? [],
+      head: prev?.head ?? 0,
       kept: prev?.kept ?? 0,
       total: prev?.total ?? this.lastTotals.get(id) ?? 0,
     };
@@ -128,13 +131,18 @@ export class PtyManager {
     e.chunks.push(d);
     e.kept += d.length;
     e.total += d.length;
-    while (e.kept > SCROLLBACK_CHARS && e.chunks.length > 1) e.kept -= e.chunks.shift()!.length;
+    // Dropping from the front by index: shift() would move every chunk on every write.
+    while (e.kept > SCROLLBACK_CHARS && e.chunks.length - e.head > 1) e.kept -= e.chunks[e.head++]!.length;
+    if (e.head > 4096 && e.head * 2 > e.chunks.length) {
+      e.chunks = e.chunks.slice(e.head);
+      e.head = 0;
+    }
   }
 
   snapshot(id: string): Snapshot {
     const e = this.entries.get(id);
     if (!e) return { data: '', end: this.lastTotals.get(id) ?? 0, state: 'idle' };
-    return { data: e.chunks.join(''), end: e.total, state: e.state };
+    return { data: e.chunks.slice(e.head).join(''), end: e.total, state: e.state };
   }
 
   write(id: string, data: string): void {

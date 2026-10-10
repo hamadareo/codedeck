@@ -152,16 +152,17 @@ export function DiffPanel({ session }: { session: Session | null }) {
               </Button>
             </div>
             <p className="text-[11px] text-muted">{t('diff.askHint')}</p>
-            {result && (
-              <pre
-                className={`max-h-32 overflow-auto whitespace-pre-wrap rounded bg-bg p-2 text-[11px] ${result.ok ? 'text-ok' : 'text-danger'}`}
-                data-testid="commit-result"
-              >
-                {result.output}
-              </pre>
-            )}
           </div>
         </>
+      )}
+      {/* Outside the file list: a successful commit empties it. */}
+      {result && (
+        <pre
+          className={`max-h-32 overflow-auto whitespace-pre-wrap rounded bg-bg p-2 text-[11px] ${result.ok ? 'text-ok' : 'text-danger'}`}
+          data-testid="commit-result"
+        >
+          {result.output}
+        </pre>
       )}
       {confirm && (
         <ConfirmDialog

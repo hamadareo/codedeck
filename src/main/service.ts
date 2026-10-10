@@ -75,7 +75,7 @@ export class CodeDeckService {
   readonly prompts: PromptRepo;
   readonly sshHosts: SshRepo;
   /** Clean screen text per session for Discord (§6); fed with the same output as the terminal. */
-  readonly screens = new ScreenMirror();
+  readonly screens = new ScreenMirror((id) => this.ptys.snapshot(id).data);
   private readonly home: string;
   private readonly loginWatchers = new Map<string, NodeJS.Timeout>();
   private readonly activities = new Map<string, Activity>();
@@ -93,7 +93,6 @@ export class CodeDeckService {
     this.ptys = new PtyManager({
       onData: (id, data, end) => {
         deps.ptyEvents.onData(id, data, end);
-        this.screens.write(id, data);
         this.observeOutput(id, data);
       },
       onState: (id, state, code) => {
