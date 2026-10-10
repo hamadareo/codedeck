@@ -32,8 +32,9 @@ mac:
   hardenedRuntime: true
   entitlements: build/entitlements.mac.plist
   entitlementsInherit: build/entitlements.mac.plist
-  # node-pty ships separate x64 and arm64 prebuilds; both go into the universal app as they are.
-  x64ArchFiles: '**/node_modules/node-pty/{prebuilds/darwin-x64,build}/**'
+  # node-pty ships separate x64 and arm64 prebuilds, and both builds contain both: they go into the
+  # universal app as they are (node-pty picks the one for the running CPU).
+  x64ArchFiles: '**/node_modules/node-pty/{prebuilds/darwin-*,build}/**'
   # Signing and notarization happen only when the Apple secrets are set in CI
   # (CSC_LINK / CSC_KEY_PASSWORD, APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID).
   notarize: false

@@ -54,23 +54,27 @@ jobs:
           fi
           npx electron-builder --publish "$PUBLISH" $EXTRA
 
-      - name: Install the built installer (clean runner)
-        shell: bash
+      - name: Install the built installer (clean runner, Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
         run: |
-          if [ "$RUNNER_OS" = "Windows" ]; then
-            INSTALLER="$(ls release/*-win-*.exe | head -1)"
-            DEST="$RUNNER_TEMP/CodeDeck Installed"
-            # NSIS silent install into a chosen folder (/D must be last and unquoted).
-            cmd //c "\"$INSTALLER\" /S /D=$(cygpath -w "$DEST")"
-            echo "CODEDECK_E2E_EXECUTABLE=$DEST/CodeDeck.exe" >> "$GITHUB_ENV"
-          else
-            DMG="$(ls release/*-mac-*.dmg | head -1)"
-            hdiutil attach "$DMG" -nobrowse -mountpoint /Volumes/CodeDeckDMG
-            mkdir -p "$RUNNER_TEMP/Applications"
-            cp -R /Volumes/CodeDeckDMG/CodeDeck.app "$RUNNER_TEMP/Applications/"
-            hdiutil detach /Volumes/CodeDeckDMG
-            echo "CODEDECK_E2E_EXECUTABLE=$RUNNER_TEMP/Applications/CodeDeck.app/Contents/MacOS/CodeDeck" >> "$GITHUB_ENV"
-          fi
+          $installer = (Get-ChildItem release\*-win-*.exe | Select-Object -First 1).FullName
+          $dest = Join-Path $env:RUNNER_TEMP 'CodeDeck Installed'
+          # NSIS silent install into a chosen folder (/D must be last and unquoted).
+          $p = Start-Process -FilePath $installer -ArgumentList '/S', "/D=$dest" -Wait -PassThru
+          if ($p.ExitCode -ne 0) { throw "installer exited with $($p.ExitCode)" }
+          if (-not (Test-Path "$dest\CodeDeck.exe")) { throw "CodeDeck.exe not installed in $dest" }
+          "CODEDECK_E2E_EXECUTABLE=$dest\CodeDeck.exe" >> $env:GITHUB_ENV
+
+      - name: Install the built installer (clean runner, macOS)
+        if: runner.os == 'macOS'
+        run: |
+          DMG="$(ls release/*-mac-*.dmg | head -1)"
+          hdiutil attach "$DMG" -nobrowse -mountpoint /Volumes/CodeDeckDMG
+          mkdir -p "$RUNNER_TEMP/Applications"
+          cp -R /Volumes/CodeDeckDMG/CodeDeck.app "$RUNNER_TEMP/Applications/"
+          hdiutil detach /Volumes/CodeDeckDMG
+          echo "CODEDECK_E2E_EXECUTABLE=$RUNNER_TEMP/Applications/CodeDeck.app/Contents/MacOS/CodeDeck" >> "$GITHUB_ENV"
 
       - name: E2E against the installed app
         run: npx playwright test app.spec phase2.spec phase3.spec phase4.spec phase5.spec phase6.spec
