@@ -87,6 +87,11 @@ const ja = {
   'session.dialog.title': '新しいセッション',
   'session.project': 'プロジェクト',
   'session.noProject': 'プロジェクトなし(フォルダを指定)',
+  'session.resumePicker': '過去の会話を選んで再開する(claude --resume)',
+  'session.resumePickerHint':
+    'claude の一覧から、このフォルダとプロファイルの過去の会話を選びます。選んだ会話は、次からもこのセッションで再開されます。',
+  'session.resumePicking': '再開する会話を選択中',
+  'session.error.pickFirst': '再開する会話を選んでから、外部ターミナルで開いてください',
   'session.profile': 'プロファイル',
   'session.cwd': '作業ディレクトリ',
   'session.pinnedDefault': '(ピン留め)',
@@ -671,6 +676,11 @@ const en: Record<MessageKey, string> = {
   'session.dialog.title': 'New session',
   'session.project': 'Project',
   'session.noProject': 'No project (choose a folder)',
+  'session.resumePicker': 'Pick a past conversation to resume (claude --resume)',
+  'session.resumePickerHint':
+    "Choose from claude's list of past conversations in this folder and profile. The one you pick is resumed in this session from then on.",
+  'session.resumePicking': 'Choosing a conversation to resume',
+  'session.error.pickFirst': 'Pick the conversation to resume first, then open it in an external terminal',
   'session.profile': 'Profile',
   'session.cwd': 'Working directory',
   'session.pinnedDefault': '(pinned)',

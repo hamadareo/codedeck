@@ -7,6 +7,7 @@ import { displayStatus, needsAttention, nextActivity, type HookWord } from '@sha
 import {
   buildHookSettings,
   hookCommand,
+  sessionStartHook,
   STATUS_FILE_ENV,
   writeHookSettings,
 } from '../../src/main/sessions/hooks';
@@ -56,17 +57,46 @@ describe('activity transitions', () => {
 describe('status hooks', () => {
   it('only CodeDeck words are written; never the hook input (prompts stay private, §8)', () => {
     const s = buildHookSettings('darwin');
-    const all = JSON.stringify(s);
     expect(Object.keys(s.hooks).sort()).toEqual(
       ['Notification', 'SessionStart', 'Stop', 'StopFailure', 'UserPromptSubmit'].sort(),
     );
-    expect(all).not.toMatch(/\b(cat|tee|jq|Get-Content)\b|stdin|\$input|\$\(/);
+    // Only SessionStart reads its input (to match out the conversation id); every other event —
+    // UserPromptSubmit carries the prompt — never does.
+    const { SessionStart, ...rest } = s.hooks;
+    expect(JSON.stringify(rest)).not.toMatch(/\b(cat|tee|jq|sed|Get-Content)\b|stdin|\$input|\$\(|ReadToEnd/);
+    expect(SessionStart![0]!.hooks[0]!.command).toMatch(/session_id/);
     for (const groups of Object.values(s.hooks))
       for (const g of groups) for (const h of g.hooks) expect(h.async).toBe(true);
     expect(s.hooks.Notification!.map((g) => g.matcher)).toEqual([
       'permission_prompt|elicitation_dialog',
       'idle_prompt',
     ]);
+  });
+
+  it('SessionStart writes "start" and the conversation id — nothing else from its input', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'cd hook テスト '));
+    const file = path.join(dir, 'a b.log');
+    const id = '0b8e3c5a-1f2d-4c6b-9a7e-123456789abc';
+    const input = JSON.stringify({
+      session_id: id,
+      transcript_path: '/secret/path.jsonl',
+      cwd: '/home/me/private project',
+      hook_event_name: 'SessionStart',
+      source: 'resume',
+    });
+    const h = sessionStartHook(process.platform);
+    const [cmd, args] =
+      process.platform === 'win32'
+        ? ['powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', h.command]]
+        : ['/bin/sh', ['-c', h.command]];
+    execFileSync(cmd, args, { input, env: { ...process.env, [STATUS_FILE_ENV]: file } });
+    const lines = fs
+      .readFileSync(file, 'utf8')
+      .replace(new RegExp(`^${String.fromCharCode(0xfeff)}`), '')
+      .split(/\r?\n/)
+      .filter(Boolean);
+    expect(lines).toEqual(['start', `session ${id}`]);
+    fs.rmSync(dir, { recursive: true, force: true });
   });
 
   it('Windows hooks run in PowerShell (works without Git Bash); others in sh', () => {

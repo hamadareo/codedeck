@@ -58,9 +58,13 @@ export function pickWindowsCandidate(lines: string[]): string | null {
   );
 }
 
-/** Interactive session args: a fresh conversation gets a fixed id; a known one is resumed. */
-export function sessionArgs(sessionId: string, resume: boolean, hookSettingsFile?: string): string[] {
-  const id = resume ? ['--resume', sessionId] : ['--session-id', sessionId];
+/**
+ * Interactive session args: a fresh conversation gets a fixed id; a known one is resumed.
+ * No id: `--resume` alone, claude's own picker of past conversations.
+ */
+export function sessionArgs(sessionId: string | null, resume: boolean, hookSettingsFile?: string): string[] {
+  const id =
+    sessionId === null ? ['--resume'] : resume ? ['--resume', sessionId] : ['--session-id', sessionId];
   // A file path, not inline JSON: JSON quotes do not survive cmd.exe for .cmd shims.
   return hookSettingsFile ? ['--settings', hookSettingsFile, ...id] : id;
 }

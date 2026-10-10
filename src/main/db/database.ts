@@ -130,6 +130,11 @@ const MIGRATIONS: string[] = [
   );
   ALTER TABLE sessions ADD COLUMN ssh_host_id TEXT REFERENCES ssh_hosts(id) ON DELETE SET NULL;
   `,
+  // v7: sessions that resume a conversation picked with `claude --resume` (or switched with /resume)
+  `
+  ALTER TABLE sessions ADD COLUMN conversation_id TEXT;
+  ALTER TABLE sessions ADD COLUMN resume_picker INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export type Db = DatabaseSync;

@@ -33,7 +33,9 @@ const settingsIdx = args.indexOf('--settings');
 const settings =
   settingsIdx >= 0 ? JSON.parse(fs.readFileSync(args[settingsIdx + 1], 'utf8')) : { hooks: {} };
 
+// Like claude, each hook gets the event's JSON on stdin.
 function fire(event, matchValue) {
+  const input = JSON.stringify({ session_id: sessionId, hook_event_name: event, cwd: process.cwd() });
   for (const group of settings.hooks?.[event] ?? []) {
     if (group.matcher && !new RegExp(`^(?:${group.matcher})$`).test(matchValue ?? '')) continue;
     for (const h of group.hooks) {
@@ -43,13 +45,19 @@ function fire(event, matchValue) {
           : process.platform === 'win32'
             ? ['bash', ['-c', h.command]]
             : ['/bin/sh', ['-c', h.command]];
-      spawn(file, argv, { stdio: 'ignore', windowsHide: true });
+      const child = spawn(file, argv, { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
+      child.stdin.on('error', () => {});
+      child.stdin.end(input);
     }
   }
 }
 
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const idIdx = Math.max(args.indexOf('--session-id'), args.indexOf('--resume'));
-const sessionId = idIdx >= 0 ? args[idIdx + 1] : 'none';
+// `--resume` without an id: claude's picker of past conversations.
+const picker = args.includes('--resume') && !UUID.test(args[args.indexOf('--resume') + 1] ?? '');
+const PAST = ['11111111-2222-4333-8444-555555555555', '66666666-7777-4888-8999-aaaaaaaaaaaa'];
+let sessionId = picker ? 'none' : idIdx >= 0 ? args[idIdx + 1] : 'none';
 process.stdout.write(`FAKE-CLAUDE cfg=${cfg}\r\n`);
 process.stdout.write(
   `FAKE-CLAUDE args=${args.filter((_, i) => i !== settingsIdx && i !== settingsIdx + 1).join(' ')}\r\n`,
@@ -58,7 +66,8 @@ process.stdout.write(`FAKE-CLAUDE hooks=${settingsIdx >= 0 ? 'yes' : 'no'}\r\n`)
 process.stdout.write(
   `FAKE-CLAUDE nested=${process.env.CLAUDECODE ?? 'no'} color=${process.env.COLORTERM ?? ''}\r\n> `,
 );
-fire('SessionStart', 'startup');
+if (picker) process.stdout.write(`\r\nFAKE-CLAUDE picker: 1) ${PAST[0]}  2) ${PAST[1]}\r\n? `);
+else fire('SessionStart', 'startup');
 
 let line = '';
 if (process.stdin.isTTY) process.stdin.setRawMode(true);
@@ -77,6 +86,14 @@ function onInput(d) {
   if (d.includes('\r')) {
     const typed = line;
     line = '';
+    if (sessionId === 'none' && picker) {
+      const picked = PAST[Number(typed) - 1];
+      if (!picked) return void process.stdout.write('\r\n? ');
+      sessionId = picked;
+      process.stdout.write(`\r\nFAKE-CLAUDE resumed ${picked}\r\n> `);
+      fire('SessionStart', 'resume');
+      return;
+    }
     if (typed === 'perm') {
       fire('Notification', 'permission_prompt');
       process.stdout.write('\r\nFAKE-CLAUDE permission? (y/n)\r\n');

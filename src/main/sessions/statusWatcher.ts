@@ -18,6 +18,8 @@ export class StatusWatcher {
     private readonly dir: string,
     private readonly onWord: (sessionId: string, word: HookWord) => void,
     pollMs = 1000,
+    /** "session <uuid>" lines: the conversation claude started or resumed. */
+    private readonly onConversation: (sessionId: string, conversationId: string) => void = () => {},
   ) {
     fs.mkdirSync(dir, { recursive: true });
     try {
@@ -80,6 +82,8 @@ export class StatusWatcher {
         // PowerShell's Add-Content may write a BOM / CRLF depending on version.
         const word = line.replace(BOM, '').trim();
         if ((HOOK_WORDS as readonly string[]).includes(word)) this.onWord(sessionId, word as HookWord);
+        const conv = /^session ([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i.exec(word);
+        if (conv) this.onConversation(sessionId, conv[1]!.toLowerCase());
       }
     } catch {
       // file not there yet / removed

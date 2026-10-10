@@ -211,6 +211,15 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
                 SSH
               </span>
             )}
+            {session.resumePicker && (
+              <span
+                className="shrink-0 rounded border border-line px-1 text-[11px] text-muted"
+                title={t('session.resumePickerHint')}
+                data-testid="pane-resume-picker"
+              >
+                ↺ {t('session.resumePicking')}
+              </span>
+            )}
             {branch && (
               <span
                 className="font-path shrink-0 text-muted"
@@ -230,7 +239,7 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {session && session.location === 'embedded' && !poppedOut && (
             <>
-              {!session.sshHostId && (
+              {!session.sshHostId && !session.resumePicker && (
                 <button
                   className={btn}
                   onClick={() => props.onOpenExternal(session.id)}

@@ -107,8 +107,11 @@ export class CodeDeckService {
     });
     this.home = deps.home ?? os.homedir();
     if (deps.stateDir) {
-      this.status = new StatusWatcher(path.join(deps.stateDir, 'status'), (id, word) =>
-        this.applyActivity(id, word),
+      this.status = new StatusWatcher(
+        path.join(deps.stateDir, 'status'),
+        (id, word) => this.applyActivity(id, word),
+        1000,
+        (id, conv) => this.onConversation(id, conv),
       );
       this.hookSettingsFile = writeHookSettings(deps.stateDir);
     } else {
@@ -136,6 +139,15 @@ export class CodeDeckService {
     if (next === 'working') this.workStart.set(id, Date.now());
     else if (prev === 'working') this.endWork(id);
     this.deps.onActivity?.(id, next, prev);
+  }
+
+  /** claude reported the conversation it runs (a pick from `claude --resume`, or /resume). */
+  private onConversation(id: string, conversationId: string): void {
+    const s = this.sessions.get(id);
+    if (!s) return;
+    if ((s.conversationId ?? s.id) === conversationId && !s.resumePicker) return;
+    this.sessions.setConversation(id, conversationId);
+    this.deps.onChange('sessions');
   }
 
   // ---------- work time (statistics, §5) ----------
@@ -342,6 +354,8 @@ export class CodeDeckService {
       profileId: profile.id,
       cwd: host ? host.remoteDir || '~' : input.cwd,
       sshHostId: host?.id ?? null,
+      // SSH sessions cannot report the picked conversation back, so they never use the picker.
+      resumePicker: !host && !!input.resumePicker,
     });
     this.deps.onChange('sessions');
     return s;
@@ -376,11 +390,11 @@ export class CodeDeckService {
   }
 
   private launchArgs(s: Session, p: Profile, withHooks: boolean): string[] {
-    return sessionArgs(
-      s.id,
-      shouldResume(p.configDir, s.id),
-      withHooks ? (this.hookSettingsFile ?? undefined) : undefined,
-    );
+    const hooks = withHooks ? (this.hookSettingsFile ?? undefined) : undefined;
+    // Until a conversation is picked, open claude's own picker (the hook then reports the pick).
+    if (s.resumePicker) return sessionArgs(null, true, hooks);
+    const conversation = s.conversationId ?? s.id;
+    return sessionArgs(conversation, shouldResume(p.configDir, conversation), hooks);
   }
 
   startPty(id: string, cols: number, rows: number): void {
@@ -459,6 +473,8 @@ export class CodeDeckService {
     const s = this.sessions.get(id);
     if (!s) throw new Error(`session not found: ${id}`);
     if (s.sshHostId) throw new Error('ssh.error.noExternal');
+    // The pick is reported by CodeDeck's hooks, which an external terminal does not run.
+    if (s.resumePicker) throw new Error('session.error.pickFirst');
     const p = this.profiles.get(s.profileId);
     if (!p) throw new Error(`profile not found: ${s.profileId}`);
     const claudePath = resolveClaude();

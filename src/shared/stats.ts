@@ -30,7 +30,13 @@ export function computeStats(input: {
 }): Stats {
   const { days, now, tzOffsetMin } = input;
   const since = now - days * DAY;
-  const sessionById = new Map(input.sessions.map((s) => [s.id, s]));
+  // Transcripts are named by conversation id: a session that resumed another conversation owns it too.
+  const sessionById = new Map(
+    input.sessions.flatMap((s) => [
+      [s.id, s] as const,
+      ...(s.conversationId ? [[s.conversationId, s] as const] : []),
+    ]),
+  );
   const projectName = new Map(input.projects.map((p) => [p.id, p.name]));
   const profileName = new Map(input.profiles.map((p) => [p.id, p.name]));
 

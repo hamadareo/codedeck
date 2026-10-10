@@ -13,6 +13,8 @@ interface Row {
   created_at: number;
   last_active_at: number;
   ssh_host_id: string | null;
+  conversation_id: string | null;
+  resume_picker: number;
 }
 
 function toSession(r: Row): Session {
@@ -26,6 +28,8 @@ function toSession(r: Row): Session {
     location: r.location,
     started: r.started === 1,
     sshHostId: r.ssh_host_id ?? null,
+    conversationId: r.conversation_id ?? null,
+    resumePicker: r.resume_picker === 1,
     createdAt: r.created_at,
     lastActiveAt: r.last_active_at,
   };
@@ -52,15 +56,34 @@ export class SessionRepo {
     profileId: string;
     cwd: string;
     sshHostId?: string | null;
+    resumePicker?: boolean;
   }): Session {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO sessions (id, title, project_id, profile_id, cwd, created_at, last_active_at, ssh_host_id)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, title, project_id, profile_id, cwd, created_at, last_active_at, ssh_host_id, resume_picker)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(s.id, s.title, s.projectId, s.profileId, s.cwd, now, now, s.sshHostId ?? null);
+      .run(
+        s.id,
+        s.title,
+        s.projectId,
+        s.profileId,
+        s.cwd,
+        now,
+        now,
+        s.sshHostId ?? null,
+        s.resumePicker ? 1 : 0,
+      );
     return this.get(s.id)!;
+  }
+
+  /** The conversation claude reported for this session; the picker is done with. */
+  setConversation(id: string, conversationId: string): Session {
+    this.db
+      .prepare('UPDATE sessions SET conversation_id = ?, resume_picker = 0 WHERE id = ?')
+      .run(conversationId === id ? null : conversationId, id);
+    return this.get(id)!;
   }
 
   patch(id: string, p: Partial<Pick<Session, 'open' | 'location' | 'started' | 'title'>>): Session {

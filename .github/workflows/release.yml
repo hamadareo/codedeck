@@ -75,7 +75,7 @@ jobs:
           echo "CODEDECK_E2E_EXECUTABLE=$RUNNER_TEMP/Applications/CodeDeck.app/Contents/MacOS/CodeDeck" >> "$GITHUB_ENV"
 
       - name: E2E against the installed app
-        run: npx playwright test app.spec phase2.spec phase3.spec phase4.spec phase5.spec phase6.spec
+        run: npx playwright test app.spec phase2.spec phase3.spec phase4.spec phase5.spec phase6.spec resume.spec
 
       - uses: actions/upload-artifact@v6
         with:

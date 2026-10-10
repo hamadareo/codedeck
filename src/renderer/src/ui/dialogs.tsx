@@ -426,10 +426,12 @@ export function NewSessionDialog(props: {
     projectId: string | null;
     cwd: string;
     sshHostId?: string | null;
+    resumePicker?: boolean;
   }): void;
 }) {
   const t = useT();
   const [hostId, setHostId] = useState('');
+  const [resumePicker, setResumePicker] = useState(false);
   const host = props.sshHosts?.find((h) => h.id === hostId) ?? null;
   const [projectId, setProjectId] = useState<string>(props.initialProjectId ?? props.projects[0]?.id ?? '');
   const project = props.projects.find((p) => p.id === projectId) ?? null;
@@ -444,7 +446,7 @@ export function NewSessionDialog(props: {
     if (host)
       return props.onStart({ profileId, projectId: null, cwd: host.remoteDir || '~', sshHostId: host.id });
     if (needsProfileConfirm(project, profileId)) return setConfirming(true);
-    props.onStart({ profileId, projectId: project?.id ?? null, cwd: effectiveCwd });
+    props.onStart({ profileId, projectId: project?.id ?? null, cwd: effectiveCwd, resumePicker });
   };
 
   if (confirming && project) {
@@ -461,7 +463,7 @@ export function NewSessionDialog(props: {
         confirmLabel={t('session.mismatch.confirm', { chosen: chosen?.name ?? '' })}
         danger
         onCancel={() => setConfirming(false)}
-        onConfirm={() => props.onStart({ profileId, projectId: project.id, cwd: effectiveCwd })}
+        onConfirm={() => props.onStart({ profileId, projectId: project.id, cwd: effectiveCwd, resumePicker })}
       />
     );
   }
@@ -554,6 +556,21 @@ export function NewSessionDialog(props: {
           testId="session-profile"
         />
       </Field>
+      {!host && (
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={resumePicker}
+            onChange={(e) => setResumePicker(e.target.checked)}
+            data-testid="session-resume-picker"
+          />
+          <span>
+            {t('session.resumePicker')}
+            <span className="mt-0.5 block text-xs text-muted">{t('session.resumePickerHint')}</span>
+          </span>
+        </label>
+      )}
     </Modal>
   );
 }

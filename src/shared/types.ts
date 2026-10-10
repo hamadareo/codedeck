@@ -43,6 +43,13 @@ export interface Session {
   started: boolean;
   /** Runs on a remote machine over SSH (§5); cwd is then the remote folder. */
   sshHostId: string | null;
+  /**
+   * The claude conversation this session continues, when it is not `id` (picked with
+   * `claude --resume`, or switched with /resume). Reported by the SessionStart hook.
+   */
+  conversationId?: string | null;
+  /** The next launch opens claude's picker (`claude --resume`) instead of a fixed id. */
+  resumePicker?: boolean;
   createdAt: number;
   lastActiveAt: number;
 }
@@ -218,4 +225,6 @@ export interface NewSessionInput {
   cwd: string;
   title?: string;
   sshHostId?: string | null;
+  /** Let claude's own picker choose a past conversation to resume (`claude --resume`). */
+  resumePicker?: boolean;
 }
