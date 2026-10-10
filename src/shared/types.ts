@@ -50,6 +50,8 @@ export interface Session {
   conversationId?: string | null;
   /** The next launch opens claude's picker (`claude --resume`) instead of a fixed id. */
   resumePicker?: boolean;
+  /** Launched with claude's Remote Control: also operable from the Claude app / claude.ai/code. */
+  remoteControl?: boolean;
   createdAt: number;
   lastActiveAt: number;
 }
@@ -227,4 +229,9 @@ export interface NewSessionInput {
   sshHostId?: string | null;
   /** Let claude's own picker choose a past conversation to resume (`claude --resume`). */
   resumePicker?: boolean;
+  /** Launch with claude's Remote Control (`--remote-control`): operable from the Claude app. */
+  remoteControl?: boolean;
 }
+
+/** Whether a profile's account may use claude's Remote Control (an organization can turn it off). */
+export type RemoteControlAvailability = 'available' | 'disabled' | 'unknown';

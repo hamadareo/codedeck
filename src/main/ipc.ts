@@ -219,6 +219,7 @@ export function registerIpc(
   handle('profiles:update', (id, patch) => svc.updateProfile(id, patch));
   handle('profiles:remove', (id) => svc.removeProfile(id));
   handle('profiles:checkAuth', (id) => svc.checkAuth(id));
+  handle('profiles:remoteControl', (id) => svc.remoteControlAvailability(id));
 
   handle('projects:list', () => svc.projects.list());
   handle('projects:create', (input) => svc.createProject(input));
@@ -251,6 +252,7 @@ export function registerIpc(
     return svc.openExternal(id);
   });
   handle('sessions:reclaim', (id) => svc.reclaim(id));
+  handle('sessions:setRemoteControl', (id, on) => svc.setRemoteControl(id, on === true));
 
   handle('pty:start', (id, cols, rows) => {
     svc.startPty(id, cols, rows);

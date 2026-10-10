@@ -12,6 +12,7 @@ import type {
   Profile,
   Project,
   PtyState,
+  RemoteControlAvailability,
   Session,
   Settings,
 } from './types';
@@ -42,6 +43,8 @@ export interface InvokeContract {
   };
   'profiles:remove': { args: [id: string]; result: { configDir: string } };
   'profiles:checkAuth': { args: [id: string]; result: Profile };
+  /** Whether this profile's account may use claude's Remote Control (organizations can turn it off). */
+  'profiles:remoteControl': { args: [id: string]; result: RemoteControlAvailability };
   'projects:list': { args: []; result: Project[] };
   'projects:create': { args: [NewProjectInput]; result: Project };
   'projects:update': {
@@ -60,6 +63,8 @@ export interface InvokeContract {
   'sessions:remove': { args: [id: string]; result: void };
   'sessions:rename': { args: [id: string, title: string]; result: Session };
   'sessions:openExternal': { args: [id: string]; result: Session };
+  /** Turn Remote Control on / off; a running session restarts and resumes its conversation. */
+  'sessions:setRemoteControl': { args: [id: string, on: boolean]; result: Session };
   'sessions:reclaim': { args: [id: string]; result: Session };
   /** Start (or report) the PTY for a session. Idempotent. */
   'pty:start': { args: [id: string, cols: number, rows: number]; result: { state: PtyState } };
@@ -206,6 +211,7 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'profiles:update',
   'profiles:remove',
   'profiles:checkAuth',
+  'profiles:remoteControl',
   'projects:list',
   'projects:create',
   'projects:update',
@@ -220,6 +226,7 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'sessions:remove',
   'sessions:rename',
   'sessions:openExternal',
+  'sessions:setRemoteControl',
   'sessions:reclaim',
   'pty:start',
   'pty:states',

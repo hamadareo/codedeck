@@ -135,6 +135,10 @@ const MIGRATIONS: string[] = [
   ALTER TABLE sessions ADD COLUMN conversation_id TEXT;
   ALTER TABLE sessions ADD COLUMN resume_picker INTEGER NOT NULL DEFAULT 0;
   `,
+  // v8: sessions launched with claude's Remote Control
+  `
+  ALTER TABLE sessions ADD COLUMN remote_control INTEGER NOT NULL DEFAULT 0;
+  `,
 ];
 
 export type Db = DatabaseSync;

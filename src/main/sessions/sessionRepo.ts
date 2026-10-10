@@ -15,6 +15,7 @@ interface Row {
   ssh_host_id: string | null;
   conversation_id: string | null;
   resume_picker: number;
+  remote_control: number;
 }
 
 function toSession(r: Row): Session {
@@ -30,6 +31,7 @@ function toSession(r: Row): Session {
     sshHostId: r.ssh_host_id ?? null,
     conversationId: r.conversation_id ?? null,
     resumePicker: r.resume_picker === 1,
+    remoteControl: r.remote_control === 1,
     createdAt: r.created_at,
     lastActiveAt: r.last_active_at,
   };
@@ -57,12 +59,14 @@ export class SessionRepo {
     cwd: string;
     sshHostId?: string | null;
     resumePicker?: boolean;
+    remoteControl?: boolean;
   }): Session {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO sessions (id, title, project_id, profile_id, cwd, created_at, last_active_at, ssh_host_id, resume_picker)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, title, project_id, profile_id, cwd, created_at, last_active_at, ssh_host_id,
+                               resume_picker, remote_control)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
       )
       .run(
         s.id,
@@ -74,8 +78,14 @@ export class SessionRepo {
         now,
         s.sshHostId ?? null,
         s.resumePicker ? 1 : 0,
+        s.remoteControl ? 1 : 0,
       );
     return this.get(s.id)!;
+  }
+
+  setRemoteControl(id: string, on: boolean): Session {
+    this.db.prepare('UPDATE sessions SET remote_control = ? WHERE id = ?').run(on ? 1 : 0, id);
+    return this.get(id)!;
   }
 
   /** The conversation claude reported for this session; the picker is done with. */

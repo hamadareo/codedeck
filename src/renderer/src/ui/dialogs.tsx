@@ -1,11 +1,18 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_COLORS,
   defaultProfileFor,
   needsProfileConfirm,
   validateProfileName,
 } from '@shared/profileRules';
-import type { EnvInfo, Profile, ProfileKind, Project, Session } from '@shared/types';
+import type {
+  EnvInfo,
+  Profile,
+  ProfileKind,
+  Project,
+  RemoteControlAvailability,
+  Session,
+} from '@shared/types';
 import type { SshHost } from '@shared/ssh';
 import { api, errorKey } from '../api';
 import { useT } from '../i18n';
@@ -412,6 +419,23 @@ export function ProfileSelect(props: {
   );
 }
 
+/** Whether the profile may use Remote Control (asked once per profile; null while checking). */
+export function useRemoteControlAvailability(profileId: string): RemoteControlAvailability | null {
+  const [state, setState] = useState<{ id: string; a: RemoteControlAvailability } | null>(null);
+  useEffect(() => {
+    if (!profileId) return;
+    let alive = true;
+    void api.invoke('profiles:remoteControl', profileId).then(
+      (a) => alive && setState({ id: profileId, a }),
+      () => alive && setState({ id: profileId, a: 'unknown' }),
+    );
+    return () => {
+      alive = false;
+    };
+  }, [profileId]);
+  return state?.id === profileId ? state.a : null;
+}
+
 export function NewSessionDialog(props: {
   profiles: Profile[];
   projects: Project[];
@@ -427,11 +451,13 @@ export function NewSessionDialog(props: {
     cwd: string;
     sshHostId?: string | null;
     resumePicker?: boolean;
+    remoteControl?: boolean;
   }): void;
 }) {
   const t = useT();
   const [hostId, setHostId] = useState('');
   const [resumePicker, setResumePicker] = useState(false);
+  const [remoteControlOn, setRemoteControlOn] = useState(false);
   const host = props.sshHosts?.find((h) => h.id === hostId) ?? null;
   const [projectId, setProjectId] = useState<string>(props.initialProjectId ?? props.projects[0]?.id ?? '');
   const project = props.projects.find((p) => p.id === projectId) ?? null;
@@ -441,12 +467,20 @@ export function NewSessionDialog(props: {
   const [cwd, setCwd] = useState('');
   const [confirming, setConfirming] = useState(false);
   const effectiveCwd = project ? project.path : cwd || props.homeDir;
+  const rcAvailability = useRemoteControlAvailability(profileId);
+  const remoteControl = remoteControlOn && rcAvailability !== 'disabled';
 
   const start = () => {
     if (host)
       return props.onStart({ profileId, projectId: null, cwd: host.remoteDir || '~', sshHostId: host.id });
     if (needsProfileConfirm(project, profileId)) return setConfirming(true);
-    props.onStart({ profileId, projectId: project?.id ?? null, cwd: effectiveCwd, resumePicker });
+    props.onStart({
+      profileId,
+      projectId: project?.id ?? null,
+      cwd: effectiveCwd,
+      resumePicker,
+      remoteControl,
+    });
   };
 
   if (confirming && project) {
@@ -463,7 +497,9 @@ export function NewSessionDialog(props: {
         confirmLabel={t('session.mismatch.confirm', { chosen: chosen?.name ?? '' })}
         danger
         onCancel={() => setConfirming(false)}
-        onConfirm={() => props.onStart({ profileId, projectId: project.id, cwd: effectiveCwd, resumePicker })}
+        onConfirm={() =>
+          props.onStart({ profileId, projectId: project.id, cwd: effectiveCwd, resumePicker, remoteControl })
+        }
       />
     );
   }
@@ -568,6 +604,31 @@ export function NewSessionDialog(props: {
           <span>
             {t('session.resumePicker')}
             <span className="mt-0.5 block text-xs text-muted">{t('session.resumePickerHint')}</span>
+          </span>
+        </label>
+      )}
+      {!host && (
+        <label className="flex items-start gap-2">
+          <input
+            type="checkbox"
+            className="mt-1"
+            checked={remoteControl}
+            disabled={rcAvailability === 'disabled'}
+            onChange={(e) => setRemoteControlOn(e.target.checked)}
+            data-testid="session-remote-control"
+          />
+          <span>
+            {t('rc.option')}
+            <span
+              className={`mt-0.5 block text-xs ${rcAvailability === 'disabled' ? 'text-warn' : 'text-muted'}`}
+              data-testid="session-remote-control-hint"
+            >
+              {rcAvailability === 'disabled'
+                ? t('rc.disabled')
+                : rcAvailability === null
+                  ? t('rc.checking')
+                  : t('rc.optionHint')}
+            </span>
           </span>
         </label>
       )}

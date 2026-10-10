@@ -4,7 +4,9 @@ import {
   buildSpawnSpec,
   cmdQuote,
   parseAuthStatus,
+  parseRemoteControlHelp,
   pickWindowsCandidate,
+  remoteControlName,
   sessionArgs,
 } from '../../src/main/platform/claude';
 import { defaultProfileDir } from '../../src/main/platform/paths';
@@ -125,6 +127,29 @@ describe('claude helpers', () => {
       '--resume',
       'id1',
     ]);
+    // No id: claude's own picker of past conversations.
+    expect(sessionArgs(null, true)).toEqual(['--resume']);
+  });
+
+  it('Remote Control: launch flag with a plain name, and availability from the CLI', () => {
+    expect(sessionArgs('id1', false, undefined, 'my project #1')).toEqual([
+      '--session-id',
+      'id1',
+      '--remote-control',
+      'my project #1',
+    ]);
+    // Only plain characters reach the command line (cmd.exe for .cmd shims): & | " % ^ are dropped.
+    expect(remoteControlName('a&b | "c" 100% ^x')).toBe('a b c 100 x');
+    expect(remoteControlName('ログイン修正 · team')).toBe('ログイン修正 · team');
+    expect(remoteControlName('&&&')).toBe('CodeDeck');
+    expect(remoteControlName('x'.repeat(80))).toHaveLength(60);
+    expect(parseRemoteControlHelp(0, 'Remote Control - Control local sessions from claude.ai/code')).toBe(
+      'available',
+    );
+    expect(
+      parseRemoteControlHelp(1, "Error: Remote Control is disabled by your organization's policy."),
+    ).toBe('disabled');
+    expect(parseRemoteControlHelp(1, 'error: unknown command')).toBe('unknown');
   });
 
   it('pickWindowsCandidate prefers .exe, then .cmd', () => {

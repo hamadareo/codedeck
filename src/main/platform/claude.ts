@@ -1,5 +1,6 @@
 import { execFile, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
+import type { RemoteControlAvailability } from '@shared/types';
 import { claudeEnv } from './env';
 
 export interface SpawnSpec {
@@ -61,12 +62,51 @@ export function pickWindowsCandidate(lines: string[]): string | null {
 /**
  * Interactive session args: a fresh conversation gets a fixed id; a known one is resumed.
  * No id: `--resume` alone, claude's own picker of past conversations.
+ * `remoteControl`: also operable from the Claude app, under this name (`--remote-control <name>`).
  */
-export function sessionArgs(sessionId: string | null, resume: boolean, hookSettingsFile?: string): string[] {
+export function sessionArgs(
+  sessionId: string | null,
+  resume: boolean,
+  hookSettingsFile?: string,
+  remoteControl?: string,
+): string[] {
   const id =
     sessionId === null ? ['--resume'] : resume ? ['--resume', sessionId] : ['--session-id', sessionId];
   // A file path, not inline JSON: JSON quotes do not survive cmd.exe for .cmd shims.
-  return hookSettingsFile ? ['--settings', hookSettingsFile, ...id] : id;
+  const args = hookSettingsFile ? ['--settings', hookSettingsFile, ...id] : id;
+  return remoteControl ? [...args, '--remote-control', remoteControl] : args;
+}
+
+/**
+ * The name a Remote Control session shows in the Claude app: the session title, plain
+ * characters only (it goes on a command line, through cmd.exe for .cmd shims on Windows).
+ */
+export function remoteControlName(title: string): string {
+  const name = title
+    .replace(/[^\p{L}\p{N} _#.\-·]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 60)
+    .trim();
+  return name || 'CodeDeck';
+}
+
+/**
+ * Whether the profile's account may use Remote Control: `claude remote-control --help`
+ * prints its help, or an error when the organization has turned it off. The CLI decides;
+ * CodeDeck reads no credentials.
+ */
+export async function remoteControlAvailability(configDir: string): Promise<RemoteControlAvailability> {
+  const claudePath = resolveClaude();
+  if (!claudePath) return 'unknown';
+  const r = await run(buildSpawnSpec({ claudePath, args: ['remote-control', '--help'], configDir }), 20_000);
+  return parseRemoteControlHelp(r.code, `${r.stdout}\n${r.stderr}`);
+}
+
+export function parseRemoteControlHelp(code: number, output: string): RemoteControlAvailability {
+  if (/disabled/i.test(output)) return 'disabled';
+  if (code === 0 && /remote control/i.test(output)) return 'available';
+  return 'unknown';
 }
 
 /** Wrap batch shims (.cmd/.bat) in cmd.exe; run everything else directly. */
@@ -99,15 +139,15 @@ export function cmdQuote(arg: string): string {
   return /[\s"&|<>^()]/.test(arg) || arg === '' ? `"${arg.replace(/"/g, '""')}"` : arg;
 }
 
-function run(spec: SpawnSpec, timeoutMs: number): Promise<{ code: number; stdout: string }> {
+function run(spec: SpawnSpec, timeoutMs: number): Promise<{ code: number; stdout: string; stderr: string }> {
   return new Promise((resolve) => {
     execFile(
       spec.file,
       spec.args,
       { env: spec.env, timeout: timeoutMs, windowsHide: true, encoding: 'utf8' },
-      (err, stdout) => {
+      (err, stdout, stderr) => {
         const code = err ? (typeof err.code === 'number' ? err.code : 1) : 0;
-        resolve({ code, stdout: stdout ?? '' });
+        resolve({ code, stdout: stdout ?? '', stderr: stderr ?? '' });
       },
     );
   });

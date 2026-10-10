@@ -22,7 +22,14 @@ import { commitMessageRequest } from './git';
 import { nextActivity, type ActivityEvent } from '@shared/status';
 import { detectLimitMessage, type LimitMessage } from '@shared/usage';
 import type { WorkSpan } from '@shared/stats';
-import { authStatus, buildSpawnSpec, resolveClaude, sessionArgs } from './platform/claude';
+import {
+  authStatus,
+  buildSpawnSpec,
+  remoteControlAvailability,
+  remoteControlName,
+  resolveClaude,
+  sessionArgs,
+} from './platform/claude';
 import { defaultProfileDir } from './platform/paths';
 import { claudeEnv } from './platform/env';
 import { launchExternal, resolveCommand } from './platform/externalTerminal';
@@ -35,6 +42,7 @@ import type {
   NewSessionInput,
   Profile,
   Project,
+  RemoteControlAvailability,
   Session,
 } from '@shared/types';
 
@@ -356,6 +364,8 @@ export class CodeDeckService {
       sshHostId: host?.id ?? null,
       // SSH sessions cannot report the picked conversation back, so they never use the picker.
       resumePicker: !host && !!input.resumePicker,
+      // On a remote machine claude would need its own login there; not offered over SSH.
+      remoteControl: !host && !!input.remoteControl,
     });
     this.deps.onChange('sessions');
     return s;
@@ -391,10 +401,37 @@ export class CodeDeckService {
 
   private launchArgs(s: Session, p: Profile, withHooks: boolean): string[] {
     const hooks = withHooks ? (this.hookSettingsFile ?? undefined) : undefined;
+    const rc = s.remoteControl ? remoteControlName(s.title) : undefined;
     // Until a conversation is picked, open claude's own picker (the hook then reports the pick).
-    if (s.resumePicker) return sessionArgs(null, true, hooks);
+    if (s.resumePicker) return sessionArgs(null, true, hooks, rc);
     const conversation = s.conversationId ?? s.id;
-    return sessionArgs(conversation, shouldResume(p.configDir, conversation), hooks);
+    return sessionArgs(conversation, shouldResume(p.configDir, conversation), hooks, rc);
+  }
+
+  // ---------- Remote Control (claude's own: the Claude app / claude.ai/code) ----------
+
+  private readonly rcAvailability = new Map<string, RemoteControlAvailability>();
+
+  async remoteControlAvailability(profileId: string): Promise<RemoteControlAvailability> {
+    const known = this.rcAvailability.get(profileId);
+    if (known) return known;
+    const p = this.profiles.get(profileId);
+    if (!p) throw new Error(`profile not found: ${profileId}`);
+    const a = await remoteControlAvailability(p.configDir);
+    if (a !== 'unknown') this.rcAvailability.set(profileId, a);
+    return a;
+  }
+
+  /** The flag is given at launch: a running session restarts and resumes its conversation. */
+  setRemoteControl(id: string, on: boolean): Session {
+    const cur = this.sessions.get(id);
+    if (!cur) throw new Error(`session not found: ${id}`);
+    if (cur.sshHostId) throw new Error('ssh.error.noRemoteControl');
+    const s = this.sessions.setRemoteControl(id, on);
+    // Stopping leaves the PTY idle; the visible terminal starts it again with the new flag.
+    if (cur.remoteControl !== on && this.ptys.isRunning(id)) this.ptys.stop(id);
+    this.deps.onChange('sessions');
+    return s;
   }
 
   startPty(id: string, cols: number, rows: number): void {

@@ -88,6 +88,21 @@ const ja = {
   'session.project': 'プロジェクト',
   'session.noProject': 'プロジェクトなし(フォルダを指定)',
   'session.resumePicker': '過去の会話を選んで再開する(claude --resume)',
+  'rc.option': '📱 Remote Control を有効にする(スマホの Claude アプリから操作)',
+  'rc.optionHint':
+    'claude の公式機能です。Claude アプリや claude.ai/code にこのセッションの名前で表示され、そこから指示や承認ができます。処理はこの PC で動きます。',
+  'rc.disabled': 'このプロファイルのアカウントでは、組織の設定で Remote Control が無効になっています',
+  'rc.checking': '使えるか確認中…',
+  'rc.badge': 'Remote Control',
+  'rc.turnOn': 'Remote Control をオンにする',
+  'rc.turnOff': 'Remote Control をオフにする',
+  'rc.confirmTitle': 'claude を再起動します',
+  'rc.confirmBody':
+    'Remote Control を{state}にするため、このセッションの claude を再起動して、同じ会話を続けます。作業中の処理は中断されます。',
+  'rc.on': 'オン',
+  'rc.off': 'オフ',
+  'rc.restart': '再起動する',
+  'ssh.error.noRemoteControl': 'SSH のセッションでは Remote Control を使えません',
   'session.resumePickerHint':
     'claude の一覧から、このフォルダとプロファイルの過去の会話を選びます。選んだ会話は、次からもこのセッションで再開されます。',
   'session.resumePicking': '再開する会話を選択中',
@@ -677,6 +692,21 @@ const en: Record<MessageKey, string> = {
   'session.project': 'Project',
   'session.noProject': 'No project (choose a folder)',
   'session.resumePicker': 'Pick a past conversation to resume (claude --resume)',
+  'rc.option': '📱 Enable Remote Control (operate from the Claude app on your phone)',
+  'rc.optionHint':
+    "claude's own feature: the session shows up under its name in the Claude app and claude.ai/code, where you can send instructions and approve. It keeps running on this computer.",
+  'rc.disabled': "Remote Control is turned off by the organization for this profile's account",
+  'rc.checking': 'Checking availability…',
+  'rc.badge': 'Remote Control',
+  'rc.turnOn': 'Turn Remote Control on',
+  'rc.turnOff': 'Turn Remote Control off',
+  'rc.confirmTitle': 'Restart claude',
+  'rc.confirmBody':
+    'To turn Remote Control {state}, claude restarts in this session and continues the same conversation. Work in progress is interrupted.',
+  'rc.on': 'on',
+  'rc.off': 'off',
+  'rc.restart': 'Restart',
+  'ssh.error.noRemoteControl': 'Remote Control is not available for SSH sessions',
   'session.resumePickerHint':
     "Choose from claude's list of past conversations in this folder and profile. The one you pick is resumed in this session from then on.",
   'session.resumePicking': 'Choosing a conversation to resume',

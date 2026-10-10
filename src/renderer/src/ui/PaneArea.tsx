@@ -4,7 +4,9 @@ import { shortcutLabel, type Platform } from '@shared/keymap';
 import { useT } from '../i18n';
 import { TerminalView } from '../terminal/TerminalView';
 import { ProfileBadge, SessionStatusLabel } from './badges';
-import { Button } from './Modal';
+import { Button, ConfirmDialog } from './Modal';
+import { api, errorKey } from '../api';
+import { useRemoteControlAvailability } from './dialogs';
 import { DND_PANE, DND_SESSION } from './TabBar';
 import { useBranch } from './DiffPanel';
 
@@ -138,6 +140,53 @@ function SplitView(props: Props & { node: Extract<LayoutNode, { kind: 'split' }>
   );
 }
 
+/**
+ * Turn claude's Remote Control on / off for a session. The flag is given at launch, so claude
+ * restarts and continues the same conversation: confirmed first. Greyed out when the profile's
+ * organization has turned Remote Control off.
+ */
+function RemoteControlToggle({ session, className }: { session: Session; className: string }) {
+  const t = useT();
+  const availability = useRemoteControlAvailability(session.profileId);
+  const [confirming, setConfirming] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const on = !!session.remoteControl;
+  const disabled = !on && availability === 'disabled';
+  const label = disabled ? t('rc.disabled') : t(on ? 'rc.turnOff' : 'rc.turnOn');
+  return (
+    <>
+      <button
+        className={`${className} ${on ? 'text-accent' : ''} disabled:opacity-40`}
+        onClick={() => setConfirming(true)}
+        disabled={disabled}
+        title={error ? t(error) : label}
+        aria-label={label}
+        aria-pressed={on}
+        data-testid="pane-remote-control-toggle"
+      >
+        📱
+      </button>
+      {confirming && (
+        <ConfirmDialog
+          title={t('rc.confirmTitle')}
+          body={t('rc.confirmBody', { state: t(on ? 'rc.off' : 'rc.on') })}
+          confirmLabel={t('rc.restart')}
+          onCancel={() => setConfirming(false)}
+          onConfirm={async () => {
+            setConfirming(false);
+            try {
+              await api.invoke('sessions:setRemoteControl', session.id, !on);
+              setError(null);
+            } catch (e) {
+              setError(errorKey(e));
+            }
+          }}
+        />
+      )}
+    </>
+  );
+}
+
 function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
   const t = useT();
   const { paneId, layout } = props;
@@ -211,6 +260,15 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
                 SSH
               </span>
             )}
+            {session.remoteControl && (
+              <span
+                className="shrink-0 rounded border border-accent/60 px-1 text-[11px] text-accent"
+                title={t('rc.optionHint')}
+                data-testid="pane-remote-control"
+              >
+                📱 {t('rc.badge')}
+              </span>
+            )}
             {session.resumePicker && (
               <span
                 className="shrink-0 rounded border border-line px-1 text-[11px] text-muted"
@@ -239,6 +297,7 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {session && session.location === 'embedded' && !poppedOut && (
             <>
+              {!session.sshHostId && <RemoteControlToggle session={session} className={btn} />}
               {!session.sshHostId && !session.resumePicker && (
                 <button
                   className={btn}

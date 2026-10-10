@@ -23,6 +23,16 @@ if (args[0] === 'auth' && args[1] === 'status') {
   process.exit(0);
 }
 
+// Like an account whose organization turned Remote Control off: profiles named "team".
+if (args[0] === 'remote-control' && args[1] === '--help') {
+  if (path.basename(cfg) === 'team') {
+    console.error("Error: Remote Control is disabled by your organization's policy.");
+    process.exit(1);
+  }
+  console.log('Remote Control - Control local sessions from claude.ai/code or the Claude mobile app');
+  process.exit(0);
+}
+
 if (args[0] === 'mcp' && args[1] === 'list') {
   console.log('Checking MCP server health…\n');
   console.log('fake-docs: https://example.com/mcp - ✔ Connected');
