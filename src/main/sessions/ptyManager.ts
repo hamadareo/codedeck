@@ -1,6 +1,30 @@
+import fs from 'node:fs';
+import path from 'node:path';
 import * as pty from 'node-pty';
 import type { PtyState } from '@shared/types';
 import type { SpawnSpec } from '../platform/claude';
+
+let helperChecked = false;
+
+/**
+ * macOS: node-pty spawns through a `spawn-helper` binary that npm may install
+ * without the execute bit ("posix_spawnp failed"). scripts/fix-node-pty.mjs fixes
+ * it at install time; this is the runtime safety net (best effort; a signed app
+ * bundle is read-only, and there the install-time fix already applied).
+ */
+function ensureSpawnHelper(): void {
+  if (helperChecked || process.platform !== 'darwin') return;
+  helperChecked = true;
+  try {
+    const root = path
+      .dirname(require.resolve('node-pty/package.json'))
+      .replace('app.asar', 'app.asar.unpacked');
+    const helper = path.join(root, 'prebuilds', `darwin-${process.arch}`, 'spawn-helper');
+    if (fs.existsSync(helper) && (fs.statSync(helper).mode & 0o111) === 0) fs.chmodSync(helper, 0o755);
+  } catch {
+    // read-only bundle or a different layout: nothing more to do here
+  }
+}
 
 /** Recent output kept per session so another window can attach mid-session (§4 pop-out). */
 export const SCROLLBACK_CHARS = 1_000_000;
@@ -54,6 +78,7 @@ export class PtyManager {
 
   start(id: string, spec: SpawnSpec, cwd: string, cols: number, rows: number): void {
     if (this.isRunning(id)) return;
+    ensureSpawnHelper();
     const prev = this.entries.get(id);
     const proc = pty.spawn(spec.file, spec.commandLine ?? spec.args, {
       name: 'xterm-256color',

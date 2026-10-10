@@ -34,6 +34,7 @@ module.exports = tseslint.config(
       'e2e/**/*.{ts,mjs}',
       '*.config.{ts,js}',
       'eslint.config.js',
+      'scripts/**/*.mjs',
     ],
     languageOptions: { globals: globals.node },
   },

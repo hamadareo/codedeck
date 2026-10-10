@@ -15,8 +15,8 @@ jobs:
         os: [macos-latest, windows-latest]
     runs-on: ${{ matrix.os }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v4
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
         with:
           node-version: 24
           cache: npm
@@ -43,7 +43,7 @@ jobs:
           fi
           echo "$CODEDECK_E2E_EXECUTABLE"
           npx playwright test app.spec phase2.spec phase3.spec phase4.spec
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         if: failure()
         with:
           name: test-results-${{ matrix.os }}
