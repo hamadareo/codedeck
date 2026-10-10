@@ -253,6 +253,7 @@ describe('statistics', () => {
       started: true,
       createdAt: 0,
       lastActiveAt: 0,
+      sshHostId: null,
     });
     const stats = computeStats({
       days: 7,

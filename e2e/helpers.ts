@@ -81,6 +81,9 @@ export async function launch(sb: Sandbox): Promise<{ app: ElectronApplication; p
       CODEDECK_NO_OS_NOTIFY: '1',
       CODEDECK_USAGE_INTERVAL_MS: '1000',
       CODEDECK_DISCORD_OFFLINE: '1',
+      CODEDECK_SSH_PATH: path.join(__dirname, 'fixtures', isWin ? 'fake-ssh.cmd' : 'fake-ssh.sh'),
+      CODEDECK_SCHEDULE_INTERVAL_MS: '1000',
+      CODEDECK_DISABLE_UPDATES: '1',
     } as Record<string, string>,
   });
   const keep = (prefix: string) => (b: Buffer) =>
@@ -110,14 +113,40 @@ export async function launch(sb: Sandbox): Promise<{ app: ElectronApplication; p
   return { app, page };
 }
 
-/** Text currently rendered by the terminal in the focused pane (or the only terminal in a pop-out). */
+/**
+ * Text of the terminal in the focused pane (or the only terminal in a pop-out), read from
+ * the terminal buffer: with GPU rendering the text is drawn on a canvas, not in the DOM.
+ */
 export async function focusedTerminalText(page: Page): Promise<string> {
   return page.evaluate(() => {
     const pane =
       document.querySelector('[data-testid="pane"][data-focused="true"]') ??
       document.querySelector('[data-testid="popout"]');
-    return pane?.querySelector('.xterm-rows')?.textContent ?? '';
+    return paneText(pane);
+    function paneText(el: Element | null): string {
+      const id = el
+        ?.querySelector('[data-testid^="terminal-"]')
+        ?.getAttribute('data-testid')
+        ?.slice('terminal-'.length);
+      const read = (window as unknown as { __codedeckTerminalText?: (id: string) => string })
+        .__codedeckTerminalText;
+      return id && read ? read(id) : '';
+    }
   });
+}
+
+/** Text of the terminal in the n-th pane. */
+export async function paneTerminalText(page: Page, index: number): Promise<string> {
+  return page.evaluate((i) => {
+    const el = document.querySelectorAll('[data-testid="pane"]')[i];
+    const id = el
+      ?.querySelector('[data-testid^="terminal-"]')
+      ?.getAttribute('data-testid')
+      ?.slice('terminal-'.length);
+    const read = (window as unknown as { __codedeckTerminalText?: (id: string) => string })
+      .__codedeckTerminalText;
+    return id && read ? read(id) : '';
+  }, index);
 }
 
 export async function expectTerminal(page: Page, re: RegExp) {

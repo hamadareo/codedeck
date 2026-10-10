@@ -13,6 +13,9 @@ import { STATUS_FILE_ENV, writeHookSettings } from './sessions/hooks';
 import { NoteRepo } from './projects/noteRepo';
 import { ScreenMirror } from './discord/screenMirror';
 import { TaskRepo } from './projects/taskRepo';
+import { resolveSsh, SshRepo } from './ssh/sshRepo';
+import { sshArgs, type SshHost, type SshHostInput } from '@shared/ssh';
+import { sanitizeEnv } from './platform/env';
 import { PromptRepo } from './prompts/promptRepo';
 import { syncCommands } from './prompts/commandSync';
 import { commitMessageRequest } from './git';
@@ -40,7 +43,8 @@ import type {
 const ANSI = /\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]/g;
 const TAIL_CHARS = 2000;
 
-export type ChangeKind = 'profiles' | 'projects' | 'sessions' | 'tasks' | 'prompts';
+export type ChangeKind =
+  'profiles' | 'projects' | 'sessions' | 'tasks' | 'prompts' | 'sshHosts' | 'schedules';
 
 export interface ServiceDeps {
   db: Db;
@@ -69,6 +73,7 @@ export class CodeDeckService {
   readonly notes: NoteRepo;
   readonly tasks: TaskRepo;
   readonly prompts: PromptRepo;
+  readonly sshHosts: SshRepo;
   /** Clean screen text per session for Discord (§6); fed with the same output as the terminal. */
   readonly screens = new ScreenMirror();
   private readonly home: string;
@@ -84,6 +89,7 @@ export class CodeDeckService {
     this.notes = new NoteRepo(deps.db);
     this.tasks = new TaskRepo(deps.db);
     this.prompts = new PromptRepo(deps.db);
+    this.sshHosts = new SshRepo(deps.db);
     this.ptys = new PtyManager({
       onData: (id, data, end) => {
         deps.ptyEvents.onData(id, data, end);
@@ -326,14 +332,17 @@ export class CodeDeckService {
     const profile = this.profiles.get(input.profileId);
     if (!profile) throw new Error(`profile not found: ${input.profileId}`);
     const project = input.projectId ? this.projects.get(input.projectId) : null;
-    const base = project?.name ?? (path.basename(input.cwd) || input.cwd);
+    const host = input.sshHostId ? this.sshHosts.get(input.sshHostId) : null;
+    if (input.sshHostId && !host) throw new Error(`ssh host not found: ${input.sshHostId}`);
+    const base = host ? `${host.name}` : (project?.name ?? (path.basename(input.cwd) || input.cwd));
     const n = this.sessions.list().filter((s) => s.title.startsWith(base)).length + 1;
     const s = this.sessions.insert({
       id: randomUUID(),
       title: input.title?.trim() || `${base} #${n}`,
-      projectId: project?.id ?? null,
+      projectId: host ? null : (project?.id ?? null),
       profileId: profile.id,
-      cwd: input.cwd,
+      cwd: host ? host.remoteDir || '~' : input.cwd,
+      sshHostId: host?.id ?? null,
     });
     this.deps.onChange('sessions');
     return s;
@@ -381,6 +390,7 @@ export class CodeDeckService {
     if (s.location !== 'embedded' || this.ptys.isRunning(id)) return;
     const p = this.profiles.get(s.profileId);
     if (!p) throw new Error(`profile not found: ${s.profileId}`);
+    if (s.sshHostId) return this.startSsh(s, cols, rows);
     const claudePath = resolveClaude();
     if (!claudePath) throw new Error('claude.notFound');
     const cwd = fs.existsSync(s.cwd) ? s.cwd : this.home;
@@ -401,10 +411,55 @@ export class CodeDeckService {
     if (p.authStatus !== 'connected') this.watchLogin(p.id);
   }
 
+  /**
+   * SSH session (§5): the OS ssh client runs claude on the remote machine. Hooks cannot
+   * report back from there, so the status stays "running". The remote side resumes the
+   * conversation when this id was used before.
+   */
+  private startSsh(s: Session, cols: number, rows: number): void {
+    const host = this.sshHosts.get(s.sshHostId!);
+    if (!host) throw new Error('ssh.error.hostGone');
+    const ssh = resolveSsh();
+    if (!ssh) throw new Error('ssh.error.noClient');
+    const env = sanitizeEnv(process.env);
+    env.TERM = 'xterm-256color';
+    env.COLORTERM = 'truecolor';
+    const spec = { file: ssh, args: sshArgs(host, s.id, s.started), env };
+    if (this.ptys.state(s.id) === 'exited') this.ptys.note(s.id, '\r\n\x1b[2m────────\x1b[0m\r\n');
+    this.screens.start(s.id, Math.max(cols, 2), Math.max(rows, 1));
+    this.ptys.start(s.id, spec, this.home, cols, rows);
+    if (!s.started) {
+      this.sessions.patch(s.id, { started: true });
+      this.deps.onChange('sessions');
+    }
+  }
+
+  // ---------- SSH hosts ----------
+
+  createSshHost(input: SshHostInput): SshHost {
+    const h = this.sshHosts.create(input);
+    this.deps.onChange('sshHosts');
+    return h;
+  }
+
+  updateSshHost(id: string, input: SshHostInput): SshHost {
+    const h = this.sshHosts.update(id, input);
+    this.deps.onChange('sshHosts');
+    return h;
+  }
+
+  removeSshHost(id: string): void {
+    for (const s of this.sessions.list().filter((x) => x.sshHostId === id)) this.ptys.stop(s.id);
+    this.sshHosts.remove(id);
+    this.deps.onChange('sshHosts');
+    this.deps.onChange('sessions');
+  }
+
   /** §2.6-5: hand the session to an OS terminal. The embedded PTY is stopped first so one id runs once. */
   async openExternal(id: string): Promise<Session> {
     const s = this.sessions.get(id);
     if (!s) throw new Error(`session not found: ${id}`);
+    if (s.sshHostId) throw new Error('ssh.error.noExternal');
     const p = this.profiles.get(s.profileId);
     if (!p) throw new Error(`profile not found: ${s.profileId}`);
     const claudePath = resolveClaude();

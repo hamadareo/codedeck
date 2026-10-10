@@ -1,0 +1,93 @@
+name: Release
+
+# Push a tag "v<version>" (the same version as package.json) to build the installers,
+# test them after installing on clean runners, and attach them to a draft GitHub Release.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-node@v5
+        with:
+          node-version: 24
+          cache: npm
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run build
+
+      - name: Build installers (and upload to a draft release on tags)
+        shell: bash
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # macOS signing / notarization: used only when these secrets exist.
+          CSC_LINK: ${{ secrets.MAC_CSC_LINK }}
+          CSC_KEY_PASSWORD: ${{ secrets.MAC_CSC_KEY_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          PUBLISH=never
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then PUBLISH=always; fi
+          EXTRA=""
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            if [ -z "$CSC_LINK" ]; then
+              export CSC_IDENTITY_AUTO_DISCOVERY=false
+              unset CSC_LINK CSC_KEY_PASSWORD
+            fi
+            if [ -n "$APPLE_ID" ] && [ -n "$CSC_LINK" ]; then EXTRA="-c.mac.notarize=true"; fi
+          else
+            unset CSC_LINK CSC_KEY_PASSWORD
+          fi
+          npx electron-builder --publish "$PUBLISH" $EXTRA
+
+      - name: Install the built installer (clean runner)
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            INSTALLER="$(ls release/*-win-*.exe | head -1)"
+            DEST="$RUNNER_TEMP/CodeDeck Installed"
+            # NSIS silent install into a chosen folder (/D must be last and unquoted).
+            cmd //c "\"$INSTALLER\" /S /D=$(cygpath -w "$DEST")"
+            echo "CODEDECK_E2E_EXECUTABLE=$DEST/CodeDeck.exe" >> "$GITHUB_ENV"
+          else
+            DMG="$(ls release/*-mac-*.dmg | head -1)"
+            hdiutil attach "$DMG" -nobrowse -mountpoint /Volumes/CodeDeckDMG
+            mkdir -p "$RUNNER_TEMP/Applications"
+            cp -R /Volumes/CodeDeckDMG/CodeDeck.app "$RUNNER_TEMP/Applications/"
+            hdiutil detach /Volumes/CodeDeckDMG
+            echo "CODEDECK_E2E_EXECUTABLE=$RUNNER_TEMP/Applications/CodeDeck.app/Contents/MacOS/CodeDeck" >> "$GITHUB_ENV"
+          fi
+
+      - name: E2E against the installed app
+        run: npx playwright test app.spec phase2.spec phase3.spec phase4.spec phase5.spec phase6.spec
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: installers-${{ matrix.os }}
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/*.exe
+            release/*.yml
+            release/*.blockmap
+          retention-days: 14
+      - uses: actions/upload-artifact@v6
+        if: failure()
+        with:
+          name: test-results-${{ matrix.os }}
+          path: test-results
+          retention-days: 7

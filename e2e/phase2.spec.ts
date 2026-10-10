@@ -9,6 +9,7 @@ import {
   addProject,
   expectTerminal,
   focusedTerminalText,
+  paneTerminalText,
   isWin,
   launch,
   useSandbox,
@@ -84,8 +85,8 @@ test('panes, palette, theme, notes, pop-out, and restore', async () => {
   await typeLine(page, 'rp1');
   await expectTerminal(page, /FAKE-CLAUDE saved/);
   const panes = page.getByTestId('pane');
-  await expect(panes.nth(0).locator('.xterm-rows')).toContainText('FAKE-CLAUDE cfg=');
-  await expect(panes.nth(1).locator('.xterm-rows')).toContainText('FAKE-CLAUDE saved');
+  await expect.poll(() => paneTerminalText(page, 0)).toContain('FAKE-CLAUDE cfg=');
+  await expect.poll(() => paneTerminalText(page, 1)).toContain('FAKE-CLAUDE saved');
 
   // Maximize the focused pane and restore it.
   await page.keyboard.press(isWin ? 'Control+Shift+Enter' : 'Meta+Shift+Enter');

@@ -12,6 +12,7 @@ interface Row {
   started: number;
   created_at: number;
   last_active_at: number;
+  ssh_host_id: string | null;
 }
 
 function toSession(r: Row): Session {
@@ -24,6 +25,7 @@ function toSession(r: Row): Session {
     open: r.open === 1,
     location: r.location,
     started: r.started === 1,
+    sshHostId: r.ssh_host_id ?? null,
     createdAt: r.created_at,
     lastActiveAt: r.last_active_at,
   };
@@ -49,14 +51,15 @@ export class SessionRepo {
     projectId: string | null;
     profileId: string;
     cwd: string;
+    sshHostId?: string | null;
   }): Session {
     const now = Date.now();
     this.db
       .prepare(
-        `INSERT INTO sessions (id, title, project_id, profile_id, cwd, created_at, last_active_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        `INSERT INTO sessions (id, title, project_id, profile_id, cwd, created_at, last_active_at, ssh_host_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
       )
-      .run(s.id, s.title, s.projectId, s.profileId, s.cwd, now, now);
+      .run(s.id, s.title, s.projectId, s.profileId, s.cwd, now, now, s.sshHostId ?? null);
     return this.get(s.id)!;
   }
 

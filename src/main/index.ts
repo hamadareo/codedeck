@@ -16,6 +16,9 @@ import { WindowManager } from './windows';
 import { Notifier } from './notifier';
 import { UsageService } from './usage/usageService';
 import { AppTray } from './tray';
+import { Scheduler } from './schedule/scheduler';
+import { Updater } from './updater';
+import { OutputBatcher } from './sessions/outputBatcher';
 
 // E2E tests point userData at a temp dir so they never touch real data.
 if (process.env.CODEDECK_USER_DATA) app.setPath('userData', process.env.CODEDECK_USER_DATA);
@@ -67,6 +70,7 @@ if (!gotLock) {
 
     let svc: CodeDeckService | null = null;
     let discord: DiscordController | null = null;
+    const output = new OutputBatcher((id, data, end) => wm.broadcast('pty:data', id, data, end));
     const log = new Logger(path.join(userData, 'logs'));
     const tray = new AppTray({ show: showMain, quit: () => app.quit() }, () => settings.get().locale);
     const usage = new UsageService({
@@ -88,8 +92,12 @@ if (!gotLock) {
       stateDir: userData,
       home: process.env.CODEDECK_HOME, // E2E only: keeps test profiles out of the real ~/.codedeck
       ptyEvents: {
-        onData: (id, data, end) => wm.broadcast('pty:data', id, data, end),
-        onState: (id, state, code) => wm.broadcast('pty:state', id, state, code),
+        onData: (id, data, end) => output.push(id, data, end),
+        onState: (id, state, code) => {
+          // The last output must arrive before "exited" is shown.
+          output.flush(id);
+          wm.broadcast('pty:state', id, state, code);
+        },
       },
       onActivity: (id, activity, prev) => {
         wm.broadcast('activity:changed', id, activity);
@@ -151,10 +159,61 @@ if (!gotLock) {
         stop: (id) => powerSaveBlocker.stop(id),
       },
     );
-    registerIpc(svc, settings, wm, usage, notifier, discord, discordInfo);
+    const scheduler = new Scheduler({
+      db,
+      run: async (s) => {
+        const project = s.projectId ? core.projects.get(s.projectId) : null;
+        const session = core.createSession({
+          profileId: s.profileId,
+          projectId: project?.id ?? null,
+          cwd: project?.path ?? (process.env.CODEDECK_HOME || os.homedir()),
+          title: `⏰ ${s.name}`,
+        });
+        core.startPty(session.id, 120, 32);
+        await core.waitForInput(session.id);
+        await core.submitText(session.id, s.prompt);
+        return session;
+      },
+      notify: (kind, vars, sessionId) => notifier.notify(kind, vars, { sessionId }),
+      onChanged: () => wm.broadcast('state:changed', 'schedules'),
+    });
+
+    let updateAnnounced = '';
+    const updater = new Updater(
+      () => settings.get().autoUpdate,
+      (st) => {
+        wm.broadcast('update:state', st);
+        if (st.state === 'downloaded' && updateAnnounced !== st.version) {
+          updateAnnounced = st.version;
+          notifier.notify('updateReady', { version: st.version });
+        }
+      },
+    );
+
+    const applyLoginItem = () => {
+      // Only the installed app registers itself; a dev build would register electron.exe.
+      if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: settings.get().launchAtLogin });
+    };
+
+    registerIpc(svc, settings, wm, usage, notifier, discord, discordInfo, {
+      scheduler,
+      updater,
+      onSettingsChanged: (before, next) => {
+        if (before.launchAtLogin !== next.launchAtLogin) applyLoginItem();
+        if (before.autoUpdate !== next.autoUpdate) updater.start();
+      },
+    });
     wm.applyTheme(settings.get().theme);
     nativeTheme.on('updated', () => wm.applyTheme(settings.get().theme));
-    wm.createMain();
+    const mainWindow = wm.createMain();
+    // "Stay in tray": closing the window hides it; quitting is done from the tray menu.
+    let quitting = false;
+    mainWindow.on('close', (e) => {
+      if (!quitting && settings.get().stayInTray) {
+        e.preventDefault();
+        mainWindow.hide();
+      }
+    });
 
     // Pop-out windows come back after a restart (sessions that are still open tabs).
     const open = new Set(
@@ -170,14 +229,20 @@ if (!gotLock) {
     void svc.checkAllAuth();
     usage.start(Number(process.env.CODEDECK_USAGE_INTERVAL_MS) || 60_000);
     void discord.apply();
+    scheduler.start(Number(process.env.CODEDECK_SCHEDULE_INTERVAL_MS) || 30_000);
+    updater.start();
+    applyLoginItem();
 
     const shutdown = () => {
       usage.stop();
+      scheduler.stop();
+      updater.stop();
       void discord?.shutdown();
       tray.destroy();
       svc?.shutdown();
     };
     app.on('before-quit', () => {
+      quitting = true;
       // Keep the list of pop-outs as it is now, so they come back after the restart.
       wm.setQuitting();
       shutdown();

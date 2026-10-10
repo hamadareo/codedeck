@@ -44,6 +44,7 @@ import {
 } from './ui/dialogs';
 import { Button, ConfirmDialog } from './ui/Modal';
 import { NotificationBanners } from './ui/usage';
+import { SchedulesDialog, SshHostsDialog, UpdateBanner, useSshHosts } from './ui/phase6';
 import { DiscordDialog, RemoteInputToasts } from './ui/DiscordDialog';
 import {
   ExtensionsDialog,
@@ -71,6 +72,8 @@ type Dialog =
   | { kind: 'promptInsert'; prompt: Prompt }
   | { kind: 'extensions'; profileId: string | null }
   | { kind: 'stats' }
+  | { kind: 'schedules' }
+  | { kind: 'sshHosts' }
   | null;
 
 const CLAUDE_SETUP_URL = 'https://code.claude.com/docs/en/setup';
@@ -111,6 +114,7 @@ function Shell() {
   const [notice, setNotice] = useState<string | null>(null);
   const statusOf = useStatusOf(data);
   const prompts = usePrompts();
+  const sshHosts = useSshHosts();
 
   const tabs = useMemo(() => sessions.filter((s) => s.open), [sessions]);
   const sessionById = useMemo(() => new Map(sessions.map((s) => [s.id, s])), [sessions]);
@@ -275,6 +279,7 @@ function Shell() {
     projectId: string | null;
     cwd: string;
     title?: string;
+    sshHostId?: string | null;
   }) => {
     setDialog(null);
     try {
@@ -404,6 +409,8 @@ function Shell() {
         setDialog({ kind: 'extensions', profileId: active?.profileId ?? null }),
       ),
       setting('stats', t('stats.title'), () => setDialog({ kind: 'stats' })),
+      setting('schedules', t('schedule.title'), () => setDialog({ kind: 'schedules' })),
+      setting('ssh', t('ssh.title'), () => setDialog({ kind: 'sshHosts' })),
       setting(
         'open',
         t('cmd.settings'),
@@ -463,7 +470,7 @@ function Shell() {
     prompts,
   ]);
 
-  const branch = useBranch(active?.cwd ?? null);
+  const branch = useBranch(active && !active.sshHostId ? active.cwd : null);
   const showOnboarding = data.loaded && (profiles.length === 0 || tabs.length === 0);
   const rightPanel = settings?.rightPanel;
   const activeProject = active?.projectId ? (projects.find((p) => p.id === active.projectId) ?? null) : null;
@@ -489,6 +496,7 @@ function Shell() {
           </button>
         </div>
       )}
+      <UpdateBanner />
       {notice && (
         <div role="status" className="flex items-center gap-3 border-b border-line bg-panel-2 px-4 py-2">
           <span className="min-w-0 flex-1 break-all">{notice}</span>
@@ -571,6 +579,7 @@ function Shell() {
                     () => setDialog({ kind: 'extensions', profileId: active?.profileId ?? null }),
                   ],
                   ['stats', '▤', t('stats.title'), () => setDialog({ kind: 'stats' })],
+                  ['schedules', '⏰', t('schedule.title'), () => setDialog({ kind: 'schedules' })],
                 ] as const
               ).map(([id, icon, label, run]) => (
                 <button
@@ -652,6 +661,10 @@ function Shell() {
 
       <NotificationBanners />
       <RemoteInputToasts sessions={sessions} onSelect={selectSession} />
+      {dialog?.kind === 'schedules' && (
+        <SchedulesDialog profiles={profiles} projects={projects} onClose={() => setDialog(null)} />
+      )}
+      {dialog?.kind === 'sshHosts' && <SshHostsDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === 'prompts' && <PromptLibraryDialog onClose={() => setDialog(null)} />}
       {dialog?.kind === 'promptInsert' && (
         <PromptInsertDialog
@@ -742,6 +755,8 @@ function Shell() {
           initialProjectId={dialog.projectId}
           initialProfileId={dialog.profileId}
           homeDir={env?.homeDir ?? ''}
+          sshHosts={sshHosts}
+          onManageSsh={() => setDialog({ kind: 'sshHosts' })}
           onClose={() => setDialog(null)}
           onStart={(input) => void startSession(input)}
         />

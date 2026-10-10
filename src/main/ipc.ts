@@ -6,8 +6,12 @@ import { listMcp, listSkills, setSkillEnabled } from './extensions';
 import { computeStats } from '@shared/stats';
 import { parsePromptExport, type PromptExport } from '@shared/prompts';
 import { translate } from '@shared/i18n';
+import type { Settings } from '@shared/types';
+import type { Scheduler } from './schedule/scheduler';
+import type { Updater } from './updater';
+import { resolveSsh } from './ssh/sshRepo';
 import { execFileSync } from 'node:child_process';
-import { BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
+import { app, BrowserWindow, clipboard, dialog, ipcMain, shell, type IpcMainInvokeEvent } from 'electron';
 import type { InvokeChannel, InvokeContract, SendChannel, SendContract } from '@shared/ipc';
 import type { CodeDeckService } from './service';
 import type { SettingsStore } from './settings';
@@ -48,7 +52,28 @@ export function registerIpc(
   notifier: Notifier,
   discord: DiscordController,
   discordInfo: () => DiscordInfo,
+  extra: {
+    scheduler: Scheduler;
+    updater: Updater;
+    onSettingsChanged(before: Settings, next: Settings): void;
+  },
 ): void {
+  const { scheduler, updater } = extra;
+  handle('schedules:list', () => scheduler.list());
+  handle('schedules:create', (input) => scheduler.create(input));
+  handle('schedules:update', (id, input) => scheduler.update(id, input));
+  handle('schedules:remove', (id) => scheduler.remove(id));
+  handle('schedules:runNow', (id) => scheduler.runNow(id));
+  handle('ssh:list', () => svc.sshHosts.list());
+  handle('ssh:create', (input) => svc.createSshHost(input));
+  handle('ssh:update', (id, input) => svc.updateSshHost(id, input));
+  handle('ssh:remove', (id) => svc.removeSshHost(id));
+  handle('ssh:available', () => resolveSsh() !== null);
+  handle('update:state', () => updater.get());
+  handle('update:check', () => updater.check());
+  handle('update:install', () => updater.installNow());
+  handle('app:version', () => (app.isPackaged ? app.getVersion() : __APP_VERSION__));
+
   // ---------- Phase 5 ----------
   handle('tasks:list', (projectId) => svc.tasks.list(projectId));
   handle('tasks:create', (projectId, title, body) => svc.createTask(projectId, title, body));
@@ -185,6 +210,7 @@ export function registerIpc(
     if (next.theme !== before.theme) wm.applyTheme(next.theme);
     wm.broadcast('settings:changed', next);
     if (patch.discord || patch.locale) void discord.apply();
+    extra.onSettingsChanged(before, next);
     return next;
   });
 

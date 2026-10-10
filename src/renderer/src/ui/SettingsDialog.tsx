@@ -3,6 +3,7 @@ import type { Settings, ThemeMode } from '@shared/types';
 import { TERMINAL_FONT_CHOICES, terminalFontFamily } from '@shared/theme';
 import { shortcutLabel, type AppAction, type Platform } from '@shared/keymap';
 import { NOTIFY_KINDS } from '@shared/notify';
+import { AppSection } from './phase6';
 import { saveSettings } from '../settings';
 import { useT } from '../i18n';
 import { Button, Field, Modal, inputCls } from './Modal';
@@ -159,6 +160,9 @@ export function SettingsDialog(props: {
       <Button onClick={props.onOpenDiscord} data-testid="open-discord">
         {t('discord.open')}…
       </Button>
+
+      <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">{t('settings.app')}</h3>
+      <AppSection />
 
       <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">
         {t('settings.notifications')}

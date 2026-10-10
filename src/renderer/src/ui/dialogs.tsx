@@ -6,6 +6,7 @@ import {
   validateProfileName,
 } from '@shared/profileRules';
 import type { EnvInfo, Profile, ProfileKind, Project, Session } from '@shared/types';
+import type { SshHost } from '@shared/ssh';
 import { api, errorKey } from '../api';
 import { useT } from '../i18n';
 import { Button, ConfirmDialog, Field, Modal, inputCls } from './Modal';
@@ -417,10 +418,19 @@ export function NewSessionDialog(props: {
   initialProjectId?: string | null;
   initialProfileId?: string | null;
   homeDir: string;
+  sshHosts?: SshHost[];
+  onManageSsh?(): void;
   onClose(): void;
-  onStart(input: { profileId: string; projectId: string | null; cwd: string }): void;
+  onStart(input: {
+    profileId: string;
+    projectId: string | null;
+    cwd: string;
+    sshHostId?: string | null;
+  }): void;
 }) {
   const t = useT();
+  const [hostId, setHostId] = useState('');
+  const host = props.sshHosts?.find((h) => h.id === hostId) ?? null;
   const [projectId, setProjectId] = useState<string>(props.initialProjectId ?? props.projects[0]?.id ?? '');
   const project = props.projects.find((p) => p.id === projectId) ?? null;
   const pinnedDefault = useMemo(() => defaultProfileFor(project, props.profiles), [project, props.profiles]);
@@ -431,6 +441,8 @@ export function NewSessionDialog(props: {
   const effectiveCwd = project ? project.path : cwd || props.homeDir;
 
   const start = () => {
+    if (host)
+      return props.onStart({ profileId, projectId: null, cwd: host.remoteDir || '~', sshHostId: host.id });
     if (needsProfileConfirm(project, profileId)) return setConfirming(true);
     props.onStart({ profileId, projectId: project?.id ?? null, cwd: effectiveCwd });
   };
@@ -467,25 +479,52 @@ export function NewSessionDialog(props: {
         </>
       }
     >
-      <Field label={t('session.project')}>
-        <select
-          className={inputCls}
-          value={projectId}
-          onChange={(e) => {
-            setProjectId(e.target.value);
-            setProfileOverride(null);
-          }}
-          data-testid="session-project"
-        >
-          {props.projects.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.name}
-            </option>
-          ))}
-          <option value="">{t('session.noProject')}</option>
-        </select>
-      </Field>
-      {!project && (
+      {props.sshHosts && (
+        <Field label={t('session.where')}>
+          <div className="flex gap-2">
+            <select
+              className={inputCls}
+              value={hostId}
+              onChange={(e) => setHostId(e.target.value)}
+              data-testid="session-where"
+            >
+              <option value="">{t('session.local')}</option>
+              {props.sshHosts.map((h) => (
+                <option key={h.id} value={h.id}>
+                  SSH: {h.name} ({h.destination})
+                </option>
+              ))}
+            </select>
+            {props.onManageSsh && (
+              <Button className="shrink-0" onClick={props.onManageSsh}>
+                {t('ssh.manage')}
+              </Button>
+            )}
+          </div>
+          {host && <span className="mt-1 block text-xs text-muted">{t('ssh.sessionHint')}</span>}
+        </Field>
+      )}
+      {!host && (
+        <Field label={t('session.project')}>
+          <select
+            className={inputCls}
+            value={projectId}
+            onChange={(e) => {
+              setProjectId(e.target.value);
+              setProfileOverride(null);
+            }}
+            data-testid="session-project"
+          >
+            {props.projects.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.name}
+              </option>
+            ))}
+            <option value="">{t('session.noProject')}</option>
+          </select>
+        </Field>
+      )}
+      {!host && !project && (
         <Field label={t('session.cwd')}>
           <div className="flex gap-2">
             <input

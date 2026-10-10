@@ -30,7 +30,7 @@ export function useBranch(cwd: string | null): string | null {
 /** Right panel "Diff" (§5 Git): changed files, per-file diff, review then commit. */
 export function DiffPanel({ session }: { session: Session | null }) {
   const t = useT();
-  const cwd = session?.cwd ?? null;
+  const cwd = session && !session.sshHostId ? session.cwd : null;
   const [status, setStatus] = useState<GitStatus | null>(null);
   const [file, setFile] = useState<string | null>(null);
   const [diff, setDiff] = useState('');
@@ -62,6 +62,7 @@ export function DiffPanel({ session }: { session: Session | null }) {
   }, [cwd, file]);
 
   if (!session) return <p className="text-muted">{t('diff.noSession')}</p>;
+  if (session.sshHostId) return <p className="text-muted">{t('ssh.noDiff')}</p>;
   if (!status) return <p className="text-muted">…</p>;
   if (!status.isRepo) return <p className="text-muted">{t('diff.notRepo', { cwd: session.cwd })}</p>;
 

@@ -17,6 +17,8 @@ import type {
 } from './types';
 import type { Plan, ProfileUsage } from './usage';
 import type { NotificationRecord } from './notify';
+import type { Schedule, ScheduleInput } from './schedule';
+import type { SshHost, SshHostInput } from './ssh';
 
 export interface PtySnapshot {
   data: string;
@@ -109,12 +111,36 @@ export interface InvokeContract {
   'extensions:list': { args: [profileId: string, projectDir?: string | null]; result: ExtensionsInfo };
   'skills:setEnabled': { args: [profileId: string, name: string, enabled: boolean]; result: void };
   'stats:get': { args: [days: number]; result: Stats };
+  'schedules:list': { args: []; result: Schedule[] };
+  'schedules:create': { args: [input: ScheduleInput]; result: Schedule };
+  'schedules:update': { args: [id: string, input: ScheduleInput]; result: Schedule };
+  'schedules:remove': { args: [id: string]; result: void };
+  'schedules:runNow': { args: [id: string]; result: void };
+  'ssh:list': { args: []; result: SshHost[] };
+  'ssh:create': { args: [input: SshHostInput]; result: SshHost };
+  'ssh:update': { args: [id: string, input: SshHostInput]; result: SshHost };
+  'ssh:remove': { args: [id: string]; result: void };
+  'ssh:available': { args: []; result: boolean };
+  'update:state': { args: []; result: UpdateState };
+  'update:check': { args: []; result: UpdateState };
+  /** Quits and installs a downloaded update. */
+  'update:install': { args: []; result: void };
+  'app:version': { args: []; result: string };
   'discord:info': { args: []; result: DiscordInfo };
   /** Stores the bot token in the OS keychain. The token is never sent back. */
   'discord:setToken': { args: [token: string]; result: DiscordInfo };
   'discord:clearToken': { args: []; result: DiscordInfo };
   'discord:reconnect': { args: []; result: DiscordInfo };
 }
+
+export type UpdateState =
+  | { state: 'disabled'; reason: 'dev' | 'off' }
+  | { state: 'idle' }
+  | { state: 'checking' }
+  | { state: 'available'; version: string }
+  | { state: 'downloaded'; version: string }
+  | { state: 'none' }
+  | { state: 'error'; error: string };
 
 export interface DiscordInfo {
   status:
@@ -150,7 +176,9 @@ export interface EventContract {
   'pty:data': [id: string, data: string, end: number];
   'pty:state': [id: string, state: PtyState, exitCode: number | null];
   'activity:changed': [id: string, activity: Activity];
-  'state:changed': [what: 'profiles' | 'projects' | 'sessions' | 'tasks' | 'prompts'];
+  'state:changed': [
+    what: 'profiles' | 'projects' | 'sessions' | 'tasks' | 'prompts' | 'sshHosts' | 'schedules',
+  ];
   'settings:changed': [settings: Settings];
   'windows:changed': [popouts: string[]];
   'usage:changed': [usage: ProfileUsage[]];
@@ -161,6 +189,7 @@ export interface EventContract {
   'discord:status': [info: DiscordInfo];
   /** Input that came from Discord (§6: shown as "from Discord" in the app). */
   'remote:input': [input: RemoteInput];
+  'update:state': [state: UpdateState];
 }
 
 export type InvokeChannel = keyof InvokeContract;
@@ -223,6 +252,20 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'extensions:list',
   'skills:setEnabled',
   'stats:get',
+  'schedules:list',
+  'schedules:create',
+  'schedules:update',
+  'schedules:remove',
+  'schedules:runNow',
+  'ssh:list',
+  'ssh:create',
+  'ssh:update',
+  'ssh:remove',
+  'ssh:available',
+  'update:state',
+  'update:check',
+  'update:install',
+  'app:version',
   'discord:info',
   'discord:setToken',
   'discord:clearToken',
@@ -247,6 +290,7 @@ export const EVENT_CHANNELS: EventChannel[] = [
   'app:focusSession',
   'discord:status',
   'remote:input',
+  'update:state',
 ];
 
 /** The API exposed on window.codedeck by the preload script. */

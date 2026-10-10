@@ -1,5 +1,6 @@
 appId: dev.codedeck.app
 productName: CodeDeck
+copyright: Copyright © 2026 hamadareo
 directories:
   output: release
   buildResources: build
@@ -10,17 +11,47 @@ files:
 npmRebuild: false
 asarUnpack:
   - node_modules/node-pty/**
+artifactName: ${productName}-${version}-${os}-${arch}.${ext}
+
+# Auto-update feed (electron-updater) and release uploads (GitHub Releases).
+publish:
+  provider: github
+  owner: hamadareo
+  repo: codedeck
+  releaseType: draft
+
 mac:
   category: public.app-category.developer-tools
   target:
     - target: dmg
       arch: [universal]
+    # The zip is what electron-updater downloads on macOS.
+    - target: zip
+      arch: [universal]
+  icon: build/icon.png
   hardenedRuntime: true
-  # Signing / notarization are enabled only when CSC_* / APPLE_* secrets are present in CI.
+  entitlements: build/entitlements.mac.plist
+  entitlementsInherit: build/entitlements.mac.plist
+  # node-pty ships separate x64 and arm64 prebuilds; both go into the universal app as they are.
+  x64ArchFiles: '**/node_modules/node-pty/{prebuilds/darwin-x64,build}/**'
+  # Signing and notarization happen only when the Apple secrets are set in CI
+  # (CSC_LINK / CSC_KEY_PASSWORD, APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID).
+  notarize: false
+dmg:
+  title: ${productName} ${version}
+  contents:
+    - { x: 150, y: 190, type: file }
+    - { x: 390, y: 190, type: link, path: /Applications }
+
 win:
   target:
     - target: nsis
       arch: [x64]
+  icon: build/icon.png
 nsis:
   oneClick: false
+  perMachine: false
   allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: CodeDeck

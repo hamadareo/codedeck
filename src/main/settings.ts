@@ -20,6 +20,9 @@ export const DEFAULT_SETTINGS: Settings = {
   sidebarWidth: 288,
   notifications: DEFAULT_NOTIFY,
   discord: DEFAULT_DISCORD,
+  stayInTray: false,
+  launchAtLogin: false,
+  autoUpdate: true,
 };
 
 function normalizeNotify(raw: Partial<NotifySettings> | undefined): NotifySettings {
@@ -64,6 +67,9 @@ export function normalizeSettings(raw: Partial<Settings> | null | undefined): Se
     sidebarWidth: clamp(r.sidebarWidth, 200, 480, d.sidebarWidth),
     notifications: normalizeNotify(r.notifications),
     discord: normalizeDiscord(r.discord),
+    stayInTray: r.stayInTray === true,
+    launchAtLogin: r.launchAtLogin === true,
+    autoUpdate: r.autoUpdate !== false,
   };
 }
 

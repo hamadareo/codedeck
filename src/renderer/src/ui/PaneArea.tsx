@@ -147,7 +147,8 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
   const maximized = layout.maximizedPaneId === paneId;
   const poppedOut = !!session && props.popouts.includes(session.id);
   const [dropping, setDropping] = useState(false);
-  const branch = useBranch(session?.cwd ?? null);
+  // Remote folders are not on this machine: no local git for SSH sessions.
+  const branch = useBranch(session && !session.sshHostId ? session.cwd : null);
   const multiple = layout.root.kind === 'split';
 
   const onDrop = (e: React.DragEvent) => {
@@ -201,6 +202,15 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
             <ProfileBadge profile={profile} small />
             <span className="min-w-0 truncate font-medium">{session.title}</span>
             <SessionStatusLabel status={props.statusOf(session.id)} />
+            {session.sshHostId && (
+              <span
+                className="shrink-0 rounded border border-line px-1 text-[11px] text-muted"
+                title={t('ssh.sessionHint')}
+                data-testid="pane-ssh"
+              >
+                SSH
+              </span>
+            )}
             {branch && (
               <span
                 className="font-path shrink-0 text-muted"
@@ -220,14 +230,16 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
         <span className="ml-auto flex shrink-0 items-center gap-0.5">
           {session && session.location === 'embedded' && !poppedOut && (
             <>
-              <button
-                className={btn}
-                onClick={() => props.onOpenExternal(session.id)}
-                title={t('session.openExternal')}
-                aria-label={t('session.openExternal')}
-              >
-                ↗
-              </button>
+              {!session.sshHostId && (
+                <button
+                  className={btn}
+                  onClick={() => props.onOpenExternal(session.id)}
+                  title={t('session.openExternal')}
+                  aria-label={t('session.openExternal')}
+                >
+                  ↗
+                </button>
+              )}
               <button
                 className={btn}
                 onClick={() => props.onPopout(session.id)}

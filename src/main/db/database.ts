@@ -104,6 +104,32 @@ const MIGRATIONS: string[] = [
   );
   CREATE INDEX work_log_session ON work_log(session_id);
   `,
+  // v6: scheduled prompts and SSH hosts (§5)
+  `
+  CREATE TABLE schedules (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    rule TEXT NOT NULL,
+    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    project_id TEXT REFERENCES projects(id) ON DELETE SET NULL,
+    prompt TEXT NOT NULL,
+    enabled INTEGER NOT NULL DEFAULT 1,
+    last_run_at INTEGER,
+    next_run_at INTEGER,
+    created_at INTEGER NOT NULL
+  );
+  CREATE TABLE ssh_hosts (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+    destination TEXT NOT NULL,
+    port INTEGER,
+    identity_file TEXT NOT NULL DEFAULT '',
+    remote_dir TEXT NOT NULL DEFAULT '',
+    remote_config_dir TEXT NOT NULL DEFAULT '',
+    created_at INTEGER NOT NULL
+  );
+  ALTER TABLE sessions ADD COLUMN ssh_host_id TEXT REFERENCES ssh_hosts(id) ON DELETE SET NULL;
+  `,
 ];
 
 export type Db = DatabaseSync;

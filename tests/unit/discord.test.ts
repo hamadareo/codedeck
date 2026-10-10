@@ -167,7 +167,8 @@ const fakeClaude = path.resolve(
   process.platform === 'win32' ? 'fake-claude.cmd' : 'fake-claude.sh',
 );
 
-describe('DiscordBridge with real sessions', () => {
+// Real PTYs and hook shells: allow for slow CI machines and parallel suites.
+describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
   let tmp = '';
   let db: Db;
   let svc: CodeDeckService;

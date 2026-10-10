@@ -41,6 +41,8 @@ export interface Session {
   location: SessionLocation;
   /** True once claude has been launched for this id at least once. */
   started: boolean;
+  /** Runs on a remote machine over SSH (§5); cwd is then the remote folder. */
+  sshHostId: string | null;
   createdAt: number;
   lastActiveAt: number;
 }
@@ -178,6 +180,12 @@ export interface Settings {
   notifications: NotifySettings;
   /** Non-secret Discord settings; the bot token lives in the OS keychain (safeStorage). */
   discord: DiscordSettings;
+  /** Closing the window keeps CodeDeck running in the tray (needed for schedules, Discord). */
+  stayInTray: boolean;
+  /** Start CodeDeck when the user logs in to the OS. */
+  launchAtLogin: boolean;
+  /** Check GitHub Releases for updates (packaged app only). */
+  autoUpdate: boolean;
 }
 
 export interface EnvInfo {
@@ -209,4 +217,5 @@ export interface NewSessionInput {
   projectId?: string | null;
   cwd: string;
   title?: string;
+  sshHostId?: string | null;
 }

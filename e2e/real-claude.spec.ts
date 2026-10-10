@@ -8,6 +8,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { _electron as electron, expect, test } from '@playwright/test';
+import { focusedTerminalText } from './helpers';
 
 test.skip(!process.env.REAL_CLAUDE, 'set REAL_CLAUDE=1 to run against the installed claude');
 
@@ -29,9 +30,10 @@ test('real claude renders inside the app with the profile config dir', async () 
     await page.getByTestId('add-profile').click();
     await page.getByTestId('profile-name').fill('real-check');
     await page.getByRole('dialog').getByRole('button', { name: '作成', exact: true }).click();
-    const rows = page.locator('.xterm-rows');
     // First-run screen of a fresh config dir (theme picker), i.e. not the user's own login.
-    await expect(rows.first()).toContainText(/text style|Let's get started|テーマ/i, { timeout: 30_000 });
+    await expect
+      .poll(() => focusedTerminalText(page), { timeout: 30_000 })
+      .toMatch(/text style|Let's get started|テーマ/i);
     await expect(page.getByTestId('profile-list').getByText('未ログイン')).toBeVisible({ timeout: 30_000 });
     await page.screenshot({ path: path.resolve(__dirname, '..', 'test-results', 'real-claude.png') });
   } finally {

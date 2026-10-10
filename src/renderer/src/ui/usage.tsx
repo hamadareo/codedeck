@@ -246,7 +246,17 @@ function UsageConfigForm({ profile, usage }: { profile: Profile; usage: ProfileU
   );
 }
 
-/** In-app banners for usage alerts (§7 アプリ内バナー). */
+const BANNER: Partial<Record<NotificationRecord['kind'], { icon: string; border: string }>> = {
+  usageThreshold: { icon: '▲', border: 'border-warn' },
+  limitReached: { icon: '⏸', border: 'border-danger' },
+  usageReset: { icon: '✓', border: 'border-ok' },
+  scheduleRan: { icon: '⏰', border: 'border-accent' },
+  scheduleMissed: { icon: '⏰', border: 'border-warn' },
+  scheduleFailed: { icon: '✕', border: 'border-danger' },
+  updateReady: { icon: '⬆', border: 'border-accent' },
+};
+
+/** In-app banners for usage alerts (§7 アプリ内バナー) and schedules. */
 export function NotificationBanners() {
   const t = useT();
   const [items, setItems] = useState<NotificationRecord[]>([]);
@@ -264,17 +274,11 @@ export function NotificationBanners() {
         <div
           key={n.id}
           role="status"
-          className={`pointer-events-auto rounded-lg border bg-panel p-3 shadow-xl ${
-            n.kind === 'limitReached'
-              ? 'border-danger'
-              : n.kind === 'usageReset'
-                ? 'border-ok'
-                : 'border-warn'
-          }`}
+          className={`pointer-events-auto rounded-lg border bg-panel p-3 shadow-xl ${BANNER[n.kind]?.border ?? 'border-line'}`}
           data-testid="notify-banner"
         >
           <div className="flex items-start gap-2">
-            <span aria-hidden>{n.kind === 'usageReset' ? '✓' : n.kind === 'limitReached' ? '⏸' : '▲'}</span>
+            <span aria-hidden>{BANNER[n.kind]?.icon ?? '•'}</span>
             <div className="min-w-0 flex-1">
               <div className="font-semibold">{n.title}</div>
               <div className="text-xs text-muted">{n.body}</div>

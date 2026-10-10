@@ -2,6 +2,7 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import { WebLinksAddon } from '@xterm/addon-web-links';
+import { WebglAddon } from '@xterm/addon-webgl';
 import { decideTerminalKey, pasteDecision, type AppAction, type Platform } from '@shared/keymap';
 import { TERMINAL_THEMES, terminalFontFamily, type ResolvedTheme } from '@shared/theme';
 import { api } from '../api';
@@ -93,6 +94,15 @@ export function getTerminal(id: string): Entry {
   term.unicode.activeVersion = '11';
   term.loadAddon(new WebLinksAddon((_e, uri) => api.send('link:open', uri)));
   term.open(host);
+  // GPU rendering keeps typing responsive with many busy sessions (§4). Falls back to the
+  // DOM renderer when WebGL is unavailable or the GPU context is lost.
+  try {
+    const webgl = new WebglAddon();
+    webgl.onContextLoss(() => webgl.dispose());
+    term.loadAddon(webgl);
+  } catch {
+    // no WebGL: keep the default renderer
+  }
 
   term.attachCustomKeyEventHandler((ev) => {
     if (ev.type !== 'keydown' || ev.isComposing || ev.keyCode === 229) return true; // IME composition
@@ -146,6 +156,26 @@ export function getTerminal(id: string): Entry {
   );
   return entry;
 }
+
+/** The terminal's text (scrollback + screen), as the user sees it. */
+export function terminalText(id: string): string {
+  const e = entries.get(id);
+  if (!e) return '';
+  const b = e.term.buffer.active;
+  const lines: string[] = [];
+  for (let i = 0; i < b.length; i++) {
+    const line = b.getLine(i);
+    const text = line?.translateToString(true) ?? '';
+    // A soft-wrapped row continues the previous line.
+    if (line?.isWrapped && lines.length) lines[lines.length - 1] += text;
+    else lines.push(text);
+  }
+  return lines.join('\n').replace(/\n+$/, '');
+}
+
+// Read access for automated UI tests: with GPU rendering the text is not in the DOM.
+(window as unknown as { __codedeckTerminalText?: (id: string) => string }).__codedeckTerminalText =
+  terminalText;
 
 export function hasTerminal(id: string): boolean {
   return entries.has(id);

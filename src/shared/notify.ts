@@ -1,6 +1,15 @@
 /** Notification kinds (§5 通知, §7). Each can be switched on/off in Settings. */
 export type NotifyKind =
-  'usageThreshold' | 'usageReset' | 'limitReached' | 'sessionDone' | 'sessionApproval' | 'sessionError';
+  | 'usageThreshold'
+  | 'usageReset'
+  | 'limitReached'
+  | 'sessionDone'
+  | 'sessionApproval'
+  | 'sessionError'
+  | 'scheduleRan'
+  | 'scheduleMissed'
+  | 'scheduleFailed'
+  | 'updateReady';
 
 export const NOTIFY_KINDS: NotifyKind[] = [
   'usageThreshold',
@@ -9,6 +18,10 @@ export const NOTIFY_KINDS: NotifyKind[] = [
   'sessionDone',
   'sessionApproval',
   'sessionError',
+  'scheduleRan',
+  'scheduleMissed',
+  'scheduleFailed',
+  'updateReady',
 ];
 
 export interface NotifySettings {
@@ -29,6 +42,10 @@ export const DEFAULT_NOTIFY: NotifySettings = {
     sessionDone: true,
     sessionApproval: true,
     sessionError: true,
+    scheduleRan: true,
+    scheduleMissed: true,
+    scheduleFailed: true,
+    updateReady: true,
   },
 };
 

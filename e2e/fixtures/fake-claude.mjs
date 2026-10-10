@@ -73,6 +73,22 @@ process.stdin.on('data', (d) => {
       process.stdout.write('\r\nFAKE-CLAUDE permission? (y/n)\r\n');
       return;
     }
+    if (typed === 'spam') {
+      // Heavy output for the performance test: ~150 KB/s of colored lines for 8 seconds.
+      const until = Date.now() + 8000;
+      let n = 0;
+      const timer = setInterval(() => {
+        let chunk = '';
+        for (let i = 0; i < 30; i++)
+          chunk += `\x1b[3${n % 7}m${String(++n).padStart(6, '0')} ${'lorem ipsum dolor sit amet '.repeat(3)}\x1b[0m\r\n`;
+        process.stdout.write(chunk);
+        if (Date.now() > until) {
+          clearInterval(timer);
+          process.stdout.write('FAKE-CLAUDE spam done\r\n> ');
+        }
+      }, 20);
+      return;
+    }
     if (typed === 'limit') {
       // As the real CLI prints it (colored, with cursor moves around it).
       process.stdout.write('\r\n\x1b[31m⎿  5-hour limit reached\x1b[39m ∙ resets 3pm (Asia/Tokyo)\r\n> ');
