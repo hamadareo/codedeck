@@ -5,14 +5,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test, type Page } from '@playwright/test';
-import { addProfile, expectTerminal, launch, makeSandbox, root, tabStatus, typeLine } from './helpers';
+import { addProfile, expectTerminal, launch, useSandbox, root, tabStatus, typeLine } from './helpers';
 
-const sb = makeSandbox('phase3');
-test.afterAll(() => sb.cleanup());
+const sandbox = useSandbox('phase3');
 
 /** Test data: one assistant message using `tokens` output tokens, a minute ago. */
 function writeTranscript(profile: string, tokens: number, id: string) {
-  const dir = path.join(sb.home, '.codedeck', 'profiles', profile, 'projects', 'C--test');
+  const dir = path.join(sandbox().home, '.codedeck', 'profiles', profile, 'projects', 'C--test');
   fs.mkdirSync(dir, { recursive: true });
   const line = {
     type: 'assistant',
@@ -32,6 +31,7 @@ async function thresholdBanners(page: Page) {
 }
 
 test('threshold alert fires once, survives restarts without repeating; limit message is detected', async () => {
+  const sb = sandbox();
   let { app, page } = await launch(sb);
   await addProfile(page, 'team', 'チーム');
   writeTranscript('team', 750, 'm1');

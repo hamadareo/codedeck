@@ -7,10 +7,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { launch, makeSandbox } from './helpers';
+import { launch, useSandbox } from './helpers';
 
-const sb = makeSandbox('phase4');
-test.afterAll(() => sb.cleanup());
+const sandbox = useSandbox('phase4');
 
 const TOKEN = 'MTAwMDAwMDAwMDAwMDAwMDAw.GfAkE1.this-is-a-test-token-not-real-0123456789';
 
@@ -22,6 +21,7 @@ function filesUnder(dir: string): string[] {
 }
 
 test('Discord setup: token kept in the keychain only; settings validated', async () => {
+  const sb = sandbox();
   let { app, page } = await launch(sb);
   await page.getByTestId('open-settings').click();
   await page.getByTestId('open-discord').click();

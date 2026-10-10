@@ -12,16 +12,16 @@ import {
   esc,
   expectTerminal,
   launch,
-  makeSandbox,
+  useSandbox,
   root,
   tabStatus,
   typeLine,
 } from './helpers';
 
-const sb = makeSandbox('e2e');
-test.afterAll(() => sb.cleanup());
+const sandbox = useSandbox('e2e');
 
 test('two accounts side by side without switching, restored after restart', async () => {
+  const sb = sandbox();
   let { app, page } = await launch(sb);
   await expect(page.getByTestId('onboarding')).toBeVisible();
 

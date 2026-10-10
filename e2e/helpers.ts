@@ -1,7 +1,7 @@
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { _electron as electron, expect, type ElectronApplication, type Page } from '@playwright/test';
+import { _electron as electron, expect, test, type ElectronApplication, type Page } from '@playwright/test';
 
 export const root = path.resolve(__dirname, '..');
 export const isWin = process.platform === 'win32';
@@ -29,9 +29,19 @@ export function makeSandbox(label: string) {
   return sb;
 }
 
-export async function launch(
-  sb: ReturnType<typeof makeSandbox>,
-): Promise<{ app: ElectronApplication; page: Page }> {
+export type Sandbox = ReturnType<typeof makeSandbox>;
+
+/** Registers a fresh sandbox per test (and per retry), so no state leaks between attempts. */
+export function useSandbox(label: string): () => Sandbox {
+  let sb: Sandbox | null = null;
+  test.beforeEach(() => {
+    sb = makeSandbox(label);
+  });
+  test.afterEach(() => sb?.cleanup());
+  return () => sb!;
+}
+
+export async function launch(sb: Sandbox): Promise<{ app: ElectronApplication; page: Page }> {
   // CODEDECK_E2E_EXECUTABLE runs the same flow against a packaged build.
   const packaged = process.env.CODEDECK_E2E_EXECUTABLE;
   const app = await electron.launch({

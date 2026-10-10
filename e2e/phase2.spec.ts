@@ -11,13 +11,12 @@ import {
   focusedTerminalText,
   isWin,
   launch,
-  makeSandbox,
+  useSandbox,
   root,
   typeLine,
 } from './helpers';
 
-const sb = makeSandbox('phase2');
-test.afterAll(() => sb.cleanup());
+const sandbox = useSandbox('phase2');
 
 const mod = isWin ? 'Control+Shift' : 'Meta';
 const palette = async (page: Page) => {
@@ -37,6 +36,7 @@ async function dragAndDrop(page: Page, source: string, paneIndex: number) {
 }
 
 test('first run: add a profile and get a running session in a few steps', async () => {
+  const sb = sandbox();
   const { app, page } = await launch(sb);
   const started = Date.now();
   let actions = 0;
@@ -55,7 +55,9 @@ test('first run: add a profile and get a running session in a few steps', async 
 });
 
 test('panes, palette, theme, notes, pop-out, and restore', async () => {
+  const sb = sandbox();
   let { app, page } = await launch(sb);
+  await addProfile(page, 'personal', '個人');
   await addProfile(page, 'team', 'チーム');
   await addProject(page, sb.projectDir, 'my project', 'team(チーム)');
   await expect(page.getByTestId('pane')).toHaveCount(1);
@@ -113,7 +115,9 @@ test('panes, palette, theme, notes, pop-out, and restore', async () => {
 
   // Settings: light theme and a bigger terminal font apply at once.
   await page.getByTestId('open-settings').click();
-  await page.getByTestId('theme-light').check();
+  // The radio reflects the saved setting, which comes back from main a moment later.
+  await page.getByTestId('theme-light').click();
+  await expect(page.getByTestId('theme-light')).toBeChecked();
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   const bg = await page.evaluate(() => getComputedStyle(document.body).backgroundColor);
   expect(bg).toBe('rgb(255, 255, 255)');
