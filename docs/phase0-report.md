@@ -82,7 +82,7 @@ Remove-Item Env:CLAUDE_CONFIG_DIR; claude auth status --text
 
 `.github/workflows/ci.yml`: `macos-latest` と `windows-latest` のマトリクスで、`npm ci` → node-pty のスモークテスト(env の受け渡し、スペースと日本語を含むパス、リサイズ)→ `electron-builder --dir` → node-pty が asar の外に出ていることの確認。
 
-- 結果: (push 後に追記)
+- 結果(2026-10-10 追記): リポジトリ `hamadareo/codedeck`(Private)に push し、CI #9 で **macOS・Windows とも成功**(lint、型チェック、ユニット 110 件、開発版とパッケージ版の E2E)。途中で見つかって直した問題は [ci-report.md](ci-report.md) を参照
 
 **Mac について CI で分かるのは**: 依存関係のインストール、node-pty(darwin のプリビルド)の読み込みと PTY の起動、パッケージ化まで。**claude の起動、ログイン、キーチェーンの分離は CI では確認できない**(CI に claude のアカウントがないため)。
 
