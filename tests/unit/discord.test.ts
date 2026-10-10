@@ -27,7 +27,9 @@ import type {
   CommandEvent,
   CommandName,
   DiscordTransport,
+  ModalEvent,
   OutMessage,
+  OutModal,
   TransportHandlers,
 } from '../../src/main/discord/transport';
 
@@ -201,12 +203,34 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
     await transport.handlers!.command(e);
     return replies;
   }
-  async function press(customId: string, userId = OWNER) {
-    const replies: (OutMessage & { ephemeral?: boolean })[] = [];
-    const e: ButtonEvent = { customId, userId, userTag: 'owner', reply: async (m) => void replies.push(m) };
+  async function press(customId: string, userId = OWNER, values?: string[]) {
+    const replies: (OutMessage & { ephemeral?: boolean; update?: boolean })[] = [];
+    const modals: OutModal[] = [];
+    const e: ButtonEvent = {
+      customId,
+      values,
+      userId,
+      userTag: 'owner',
+      reply: async (m) => void replies.push(m),
+      showModal: async (m) => void modals.push(m),
+    };
     await transport.handlers!.button(e);
+    return Object.assign(replies, { modals });
+  }
+  async function submit(customId: string, fields: Record<string, string>, userId = OWNER) {
+    const replies: (OutMessage & { ephemeral?: boolean })[] = [];
+    const e: ModalEvent = {
+      customId,
+      fields,
+      userId,
+      userTag: 'owner',
+      reply: async (m) => void replies.push(m),
+    };
+    await transport.handlers!.modal(e);
     return replies;
   }
+  const buttonsOf = (m: OutMessage) => (m.rows ?? []).flatMap((r) => ('buttons' in r ? r.buttons : []));
+  const selectOf = (m: OutMessage) => (m.rows ?? []).flatMap((r) => ('select' in r ? [r.select] : []))[0]!;
 
   beforeAll(async () => {
     process.env.CODEDECK_CLAUDE_PATH = fakeClaude;
@@ -280,6 +304,7 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
   it('registers guild commands', () => {
     expect(transport.registered?.guildId).toBe('33333333333333333');
     expect(transport.registered?.defs.map((d) => d.name)).toEqual([
+      'panel',
       'sessions',
       'new',
       'send',
@@ -292,7 +317,7 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
   it('regression: users outside the allow-list are ignored and logged', async () => {
     const replies = await command('send', { session: 'job', text: 'hello from stranger' }, STRANGER);
     expect(replies).toEqual([]);
-    expect(await press(`cd:allow:${sessionId}`, STRANGER)).toEqual([]);
+    expect([...(await press(`cd:allow:${sessionId}`, STRANGER))]).toEqual([]);
     expect(logs.filter((l) => l.startsWith('ignored') && l.includes(STRANGER))).toHaveLength(2);
     expect(await screen()).not.toContain('stranger');
   });
@@ -310,6 +335,33 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
     expect(done.channel).toBe('thread-1');
     expect(done.msg.content).toContain('変更: 2 ファイル、+5 / -1 行');
     expect(done.msg.mentionUserId).toBe(OWNER);
+  });
+
+  it('panel: pick a session from the menu, open the instruction form, send — no commands to type', async () => {
+    const panel = (await command('panel', {}))[0]!;
+    expect(panel.card!.description).toMatch(/job/);
+    expect(panel.card!.description).toMatch(/team/);
+    expect(selectOf(panel).options[0]!.value).toBe(sessionId);
+    expect(buttonsOf(panel).map((b) => b.label)).toEqual(['🔄 更新', '📊 使用量']); // /new is off by default
+    // Refresh replaces the panel in place.
+    expect((await press('cd:refresh:panel'))[0]!.update).toBe(true);
+
+    const card = (await press('cd:pick:panel', OWNER, [sessionId]))[0]!;
+    expect(card.ephemeral).toBe(true);
+    expect(card.card!.title).toContain('job');
+    expect(card.card!.footer).toBe(`team · ${path.basename(tmp)}`);
+    const ask = buttonsOf(card).find((b) => b.id === `cd:ask:${sessionId}`)!;
+    expect(ask.label).toBe('💬 指示を送る');
+
+    const opened = await press(ask.id);
+    expect(opened.modals[0]!.id).toBe(`cd:askform:${sessionId}`);
+    // Not allow-listed: the form is ignored too.
+    expect(await submit(opened.modals[0]!.id, { text: 'form from stranger' }, STRANGER)).toEqual([]);
+    const sent = await submit(opened.modals[0]!.id, { text: 'hello from form' });
+    expect(sent[0]!.content).toContain('送信しました');
+    await until(async () => (await screen()).includes('hello from form'));
+    expect(await screen()).not.toContain('form from stranger');
+    expect(remote.at(-1)).toEqual({ kind: 'send', preview: 'hello from form' });
   });
 
   it('dangerous instructions need a confirmation by the same user', async () => {
@@ -332,13 +384,20 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
     await until(() => svc.activity(sessionId) === 'approval');
     await until(() => transport.posts.some((p) => p.msg.content.includes('承認待ち: job')));
     const post = transport.posts.find((p) => p.msg.content.includes('承認待ち: job'))!;
-    expect(post.msg.buttons?.map((b) => b.label)).toEqual(['許可', '拒否', '詳細を見る']);
-    const ok = await press(post.msg.buttons![0]!.id);
+    expect(buttonsOf(post.msg).map((b) => b.label)).toEqual([
+      '✅ 許可',
+      '❌ 拒否',
+      '💬 指示を送る',
+      '🖥️ 画面を見る',
+    ]);
+    expect(post.msg.card!.title).toContain('承認待ち');
+    const allowId = buttonsOf(post.msg)[0]!.id;
+    const ok = await press(allowId);
     expect(ok[0]!.content).toContain('許可しました');
     expect(svc.activity(sessionId)).toBe('working');
     expect(remote.at(-1)?.kind).toBe('approve');
     // Pressing again: nothing is waiting any more.
-    expect((await press(post.msg.buttons![0]!.id))[0]!.content).toContain('もう待っていません');
+    expect((await press(allowId))[0]!.content).toContain('もう待っていません');
   });
 
   it('/status masks secrets from the screen', async () => {
@@ -364,5 +423,17 @@ describe('DiscordBridge with real sessions', { timeout: 30_000 }, () => {
     expect(r[0]!.content).toContain('開始しました');
     const created = svc.sessions.list().find((s) => s.id !== sessionId)!;
     await until(async () => (await svc.screens.lines(created.id, 40)).join('\n').includes('first task'));
+  });
+
+  it('new session with buttons: pick where it starts from a menu', async () => {
+    const before = svc.sessions.list().length;
+    const menu = (await press('cd:newmenu:panel'))[0]!;
+    const profile = svc.profiles.list()[0]!;
+    const choice = selectOf(menu).options.find((o) => o.value === `-|${profile.id}`)!;
+    expect(choice.label).toContain('プロジェクトなし');
+    const r = (await press('cd:newpick:panel', OWNER, [choice.value]))[0]!;
+    expect(r.content).toContain('開始しました');
+    expect(buttonsOf(r)[0]!.label).toBe('💬 指示を送る');
+    expect(svc.sessions.list()).toHaveLength(before + 1);
   });
 });

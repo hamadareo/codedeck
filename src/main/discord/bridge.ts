@@ -19,7 +19,12 @@ import type {
   CommandDef,
   CommandEvent,
   DiscordTransport,
+  ModalEvent,
+  OutButton,
   OutMessage,
+  OutModal,
+  OutRow,
+  Reply,
 } from './transport';
 
 export type RemoteKind = 'send' | 'approve' | 'deny' | 'stop' | 'new';
@@ -63,6 +68,35 @@ interface Pending {
 }
 
 const CONFIRM_TTL = 2 * 60_000;
+/** Status at a glance: an icon (never color alone) and a card color. */
+const STATUS_ICON: Record<SessionStatus, string> = {
+  idle: '⚫',
+  starting: '⚪',
+  running: '⚪',
+  working: '🔵',
+  waiting: '🟢',
+  approval: '🟡',
+  done: '✅',
+  error: '🔴',
+  limit: '⏸️',
+  exited: '⚫',
+  external: '↗️',
+};
+const STATUS_COLOR: Record<SessionStatus, number> = {
+  idle: 0x64748b,
+  starting: 0x94a3b8,
+  running: 0x94a3b8,
+  working: 0x3b82f6,
+  waiting: 0x22c55e,
+  approval: 0xf59e0b,
+  done: 0x16a34a,
+  error: 0xef4444,
+  limit: 0xa855f7,
+  exited: 0x64748b,
+  external: 0x64748b,
+};
+/** Sessions that need the user come first, then busy ones, then the rest. */
+const STATUS_ORDER: SessionStatus[] = ['approval', 'error', 'limit', 'working', 'done', 'waiting'];
 const STATUS_LINES = 30;
 const MAX_REMINDERS = 3;
 
@@ -106,6 +140,7 @@ export class DiscordBridge {
     const t = (k: string) => this.t(k);
     const session = { name: 'session', description: t('dc.opt.session'), required: true, autocomplete: true };
     return [
+      { name: 'panel', description: t('dc.cmd.panel'), options: [] },
       { name: 'sessions', description: t('dc.cmd.sessions'), options: [] },
       {
         name: 'new',
@@ -121,7 +156,7 @@ export class DiscordBridge {
         description: t('dc.cmd.send'),
         options: [session, { name: 'text', description: t('dc.opt.text'), required: true, long: true }],
       },
-      { name: 'status', description: t('dc.cmd.status'), options: [session] },
+      { name: 'status', description: t('dc.cmd.status'), options: [{ ...session, required: false }] },
       { name: 'stop', description: t('dc.cmd.stop'), options: [session] },
       { name: 'usage', description: t('dc.cmd.usage'), options: [] },
     ];
@@ -134,6 +169,7 @@ export class DiscordBridge {
       const { botTag } = await this.transport.connect(token, {
         command: (e) => this.onCommand(e),
         button: (e) => this.onButton(e),
+        modal: (e) => this.onModal(e),
         autocomplete: (e) => this.onAutocomplete(e),
       });
       if (s.guildId) await this.transport.registerCommands(s.guildId, this.commandDefs());
@@ -185,6 +221,8 @@ export class DiscordBridge {
     };
 
     switch (e.name) {
+      case 'panel':
+        return e.reply(this.panelMessage());
       case 'sessions': {
         const list = open();
         const profiles = new Map(this.deps.profiles().map((p) => [p.id, p.name]));
@@ -195,6 +233,7 @@ export class DiscordBridge {
         return e.reply({ content: lines.length ? lines.join('\n') : this.t('dc.noSessions') });
       }
       case 'status': {
+        if (!e.options.session) return e.reply(this.panelMessage());
         const s = await find();
         if (!s) return;
         return e.reply(
@@ -204,45 +243,19 @@ export class DiscordBridge {
           ),
         );
       }
-      case 'usage': {
-        const profiles = this.deps.profiles();
-        const lines = this.deps.usage().map((u) => {
-          const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v)}%`);
-          const reset = u.fiveHour.resetAt
-            ? ` (${this.t('usage.resetIn', { time: formatDuration(u.fiveHour.resetAt - this.now(), this.deps.locale()) })})`
-            : '';
-          return this.t('dc.usageLine', {
-            profile: profiles.find((p) => p.id === u.profileId)?.name ?? '?',
-            p5: pct(u.fiveHour.percent),
-            p7: pct(u.sevenDay.percent),
-            reset,
-          });
-        });
-        return e.reply({ content: lines.join('\n') || this.t('usage.none') });
-      }
+      case 'usage':
+        return e.reply(this.usageMessage());
       case 'stop': {
         if (!perms.stop) return forbid('/stop');
         const s = await find();
         if (!s) return;
-        if (!this.deps.isRunning(s.id))
-          return e.reply({ content: this.t('dc.notRunning', { session: s.title }), ephemeral: true });
-        this.deps.input(s.id, '\x1b');
-        this.deps.onRemoteInput(s.id, e.userTag, 'stop', 'Esc');
-        return e.reply({ content: this.t('dc.stopped', { session: s.title }) });
+        return this.interrupt(s, e.userTag, e.reply);
       }
       case 'send': {
         if (!perms.send) return forbid('/send');
         const s = await find();
         if (!s) return;
-        const text = e.options.text ?? '';
-        if (!text.trim()) return;
-        if (!this.deps.isRunning(s.id))
-          return e.reply({ content: this.t('dc.notRunning', { session: s.title }), ephemeral: true });
-        const danger = findDanger(text);
-        if (danger.length)
-          return e.reply(this.confirm({ action: 'send', sessionId: s.id, text, userId: e.userId }, danger));
-        await this.send(s, text, e.userTag);
-        return e.reply({ content: this.t('dc.sent', { session: s.title }) });
+        return this.sendFromDiscord(s, e.options.text ?? '', e.userId, e.userTag, e.reply);
       }
       case 'new': {
         if (!perms.newSession) return forbid('/new');
@@ -312,6 +325,194 @@ export class DiscordBridge {
     );
   }
 
+  private usageMessage(): OutMessage {
+    const profiles = this.deps.profiles();
+    const lines = this.deps.usage().map((u) => {
+      const pct = (v: number | null) => (v === null ? '—' : `${Math.round(v)}%`);
+      const reset = u.fiveHour.resetAt
+        ? ` (${this.t('usage.resetIn', { time: formatDuration(u.fiveHour.resetAt - this.now(), this.deps.locale()) })})`
+        : '';
+      return this.t('dc.usageLine', {
+        profile: profiles.find((p) => p.id === u.profileId)?.name ?? '?',
+        p5: pct(u.fiveHour.percent),
+        p7: pct(u.sevenDay.percent),
+        reset,
+      });
+    });
+    return { content: lines.join('\n') || this.t('usage.none') };
+  }
+
+  private async interrupt(s: Session, userTag: string, reply: Reply): Promise<void> {
+    if (!this.deps.isRunning(s.id))
+      return reply({ content: this.t('dc.notRunning', { session: s.title }), ephemeral: true });
+    this.deps.input(s.id, '\x1b');
+    this.deps.onRemoteInput(s.id, userTag, 'stop', 'Esc');
+    return reply({ content: this.t('dc.stopped', { session: s.title }) });
+  }
+
+  /** /send and the instruction form: dangerous text asks for confirmation first. */
+  private async sendFromDiscord(
+    s: Session,
+    text: string,
+    userId: string,
+    userTag: string,
+    reply: Reply,
+  ): Promise<void> {
+    if (!text.trim()) return;
+    if (!this.deps.isRunning(s.id))
+      return reply({ content: this.t('dc.notRunning', { session: s.title }), ephemeral: true });
+    const danger = findDanger(text);
+    if (danger.length) return reply(this.confirm({ action: 'send', sessionId: s.id, text, userId }, danger));
+    await this.send(s, text, userTag);
+    return reply({ content: this.t('dc.sent', { session: s.title }) });
+  }
+
+  // ---------- control panel and session cards: buttons instead of typing ----------
+
+  private statusText(s: Session): string {
+    const st = this.deps.statusOf(s.id);
+    return `${STATUS_ICON[st]} ${this.t(`status.${st}`)}`;
+  }
+
+  /** "profile · project" (the folder name when the session has no project). */
+  private where(s: Session): string {
+    const profile = this.deps.profiles().find((p) => p.id === s.profileId)?.name ?? '?';
+    const project = s.projectId ? this.deps.projects().find((p) => p.id === s.projectId)?.name : null;
+    const folder = s.cwd.split(/[\\/]/).filter(Boolean).pop() ?? s.cwd;
+    return `${profile} · ${project ?? folder}`;
+  }
+
+  private sorted(): Session[] {
+    const rank = (s: Session) => {
+      const i = STATUS_ORDER.indexOf(this.deps.statusOf(s.id));
+      return i < 0 ? STATUS_ORDER.length : i;
+    };
+    return this.deps
+      .sessions()
+      .filter((s) => s.open)
+      .sort((a, b) => rank(a) - rank(b) || b.lastActiveAt - a.lastActiveAt);
+  }
+
+  /** Every session at a glance, a menu to pick one, and the common actions. */
+  panelMessage(): OutMessage {
+    const list = this.sorted().slice(0, 25);
+    const perms = this.deps.settings().permissions;
+    const time = new Date(this.now()).toLocaleTimeString(this.deps.locale() === 'ja' ? 'ja-JP' : 'en-US', {
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+    const rows: OutRow[] = [];
+    if (list.length)
+      rows.push({
+        select: {
+          id: 'cd:pick:panel',
+          placeholder: this.t('dc.panel.pick'),
+          options: list.map((s) => ({
+            label: `${STATUS_ICON[this.deps.statusOf(s.id)]} ${s.title}`,
+            value: s.id,
+            description: `${this.t(`status.${this.deps.statusOf(s.id)}`)} · ${this.where(s)}`,
+          })),
+        },
+      });
+    rows.push({
+      buttons: [
+        { id: 'cd:refresh:panel', label: `🔄 ${this.t('dc.btn.refresh')}`, style: 'secondary' },
+        ...(perms.newSession
+          ? [{ id: 'cd:newmenu:panel', label: `➕ ${this.t('dc.btn.new')}`, style: 'primary' as const }]
+          : []),
+        { id: 'cd:usage:panel', label: `📊 ${this.t('dc.btn.usage')}`, style: 'secondary' },
+      ],
+    });
+    return {
+      content: '',
+      card: {
+        title: `🎛️ ${this.t('dc.panel.title')}`,
+        description: list.length
+          ? list.map((s) => `${this.statusText(s)}\u3000**${s.title}**\n\u3000${this.where(s)}`).join('\n\n')
+          : this.t('dc.noSessions'),
+        color: 0x5865f2,
+        footer: this.t('dc.panel.updated', { time, n: list.length }),
+      },
+      rows,
+    };
+  }
+
+  /** The actions that fit the session's state, as buttons. */
+  private sessionRows(s: Session): OutRow[] {
+    const perms = this.deps.settings().permissions;
+    const st = this.deps.statusOf(s.id);
+    const rows: OutRow[] = [];
+    if (st === 'approval' && perms.approve)
+      rows.push({
+        buttons: [
+          { id: `cd:allow:${s.id}`, label: `✅ ${this.t('dc.btn.allow')}`, style: 'success' },
+          { id: `cd:deny:${s.id}`, label: `❌ ${this.t('dc.btn.deny')}`, style: 'danger' },
+        ],
+      });
+    const main: OutButton[] = [];
+    if (perms.send && this.deps.isRunning(s.id))
+      main.push({ id: `cd:ask:${s.id}`, label: `💬 ${this.t('dc.btn.ask')}`, style: 'primary' });
+    main.push({ id: `cd:details:${s.id}`, label: `🖥️ ${this.t('dc.btn.details')}`, style: 'secondary' });
+    if (perms.stop && (st === 'working' || st === 'approval'))
+      main.push({ id: `cd:stop:${s.id}`, label: `⏹️ ${this.t('dc.btn.stop')}`, style: 'secondary' });
+    rows.push({ buttons: main });
+    return rows;
+  }
+
+  /** A session's screen with a status card and its action buttons. */
+  private async sessionCard(s: Session, header: string, lines = STATUS_LINES): Promise<OutMessage> {
+    const msg = await this.screenMessage(s, header, lines);
+    return {
+      ...msg,
+      card: {
+        title: `${this.statusText(s)}\u3000${s.title}`,
+        color: STATUS_COLOR[this.deps.statusOf(s.id)],
+        footer: this.where(s),
+      },
+      rows: this.sessionRows(s),
+    };
+  }
+
+  /** Choices for a new session: each project with its pinned profile (or every profile), or no project. */
+  private newSessionChoices(): { label: string; value: string; description: string }[] {
+    const profiles = this.deps.profiles();
+    const out: { label: string; value: string; description: string }[] = [];
+    const add = (label: string, projectId: string, p: Profile) =>
+      out.push({
+        label,
+        value: `${projectId}|${p.id}`,
+        description: this.t('dc.new.with', { profile: p.name }),
+      });
+    for (const pr of this.deps.projects()) {
+      const pinned = profiles.find((p) => p.id === pr.pinnedProfileId);
+      for (const p of pinned ? [pinned] : profiles) add(`📁 ${pr.name}`, pr.id, p);
+    }
+    for (const p of profiles) add(`🏠 ${this.t('dc.new.noProject')}`, '-', p);
+    return out.slice(0, 25);
+  }
+
+  private askModal(s: Session): OutModal {
+    return {
+      id: `cd:askform:${s.id}`,
+      title: `💬 ${s.title}`,
+      inputs: [
+        { id: 'text', label: this.t('dc.ask.label'), placeholder: this.t('dc.ask.placeholder'), long: true },
+      ],
+    };
+  }
+
+  async onModal(e: ModalEvent): Promise<void> {
+    if (!this.allowed(e.userId, 'form')) return;
+    const [prefix, action, ref] = e.customId.split(':');
+    if (prefix !== 'cd' || action !== 'askform' || !ref) return;
+    this.deps.log('form', { user: e.userId, action });
+    if (!this.deps.settings().permissions.send)
+      return e.reply({ content: this.t('dc.forbidden', { op: '/send' }), ephemeral: true });
+    const s = this.deps.sessions().find((x) => x.id === ref);
+    if (!s) return e.reply({ content: this.t('dc.notFound', { q: ref }), ephemeral: true });
+    return this.sendFromDiscord(s, e.fields.text ?? '', e.userId, e.userTag, e.reply);
+  }
+
   private async waitReady(id: string, timeoutMs = 30_000): Promise<void> {
     const until = this.now() + timeoutMs;
     while (this.now() < until) {
@@ -350,6 +551,51 @@ export class DiscordBridge {
     const perms = this.deps.settings().permissions;
     this.deps.log('button', { user: e.userId, action });
 
+    // Control panel: refresh in place, pick a session, start one, usage.
+    if (action === 'refresh') return e.reply({ ...this.panelMessage(), update: true });
+    if (action === 'usage') return e.reply({ ...this.usageMessage(), ephemeral: true });
+    if (action === 'pick') {
+      const s = this.deps.sessions().find((x) => x.id === e.values?.[0]);
+      if (!s) return e.reply({ content: this.t('dc.notFound', { q: e.values?.[0] ?? '' }), ephemeral: true });
+      return e.reply({ ...(await this.sessionCard(s, '')), ephemeral: true });
+    }
+    if (action === 'newmenu' || action === 'newpick') {
+      if (!perms.newSession)
+        return e.reply({ content: this.t('dc.forbidden', { op: '/new' }), ephemeral: true });
+      if (action === 'newmenu')
+        return e.reply({
+          content: this.t('dc.new.prompt'),
+          rows: [
+            {
+              select: {
+                id: 'cd:newpick:panel',
+                placeholder: this.t('dc.new.pick'),
+                options: this.newSessionChoices(),
+              },
+            },
+          ],
+          ephemeral: true,
+        });
+      const [projectId, profileId] = (e.values?.[0] ?? '').split('|');
+      const profile = this.deps.profiles().find((p) => p.id === profileId);
+      if (!profile)
+        return e.reply({ content: this.t('dc.unknownProfile', { q: profileId ?? '' }), ephemeral: true });
+      const project = this.deps.projects().find((p) => p.id === projectId) ?? null;
+      const s = this.deps.createSession({
+        profileId: profile.id,
+        projectId: project?.id ?? null,
+        cwd: project?.path ?? this.deps.homeDir(),
+      });
+      this.deps.startPty(s.id);
+      this.deps.onRemoteInput(s.id, e.userTag, 'new', s.title);
+      return e.reply({
+        content: this.t('dc.started', { session: s.title, profile: profile.name }),
+        rows: perms.send
+          ? [{ buttons: [{ id: `cd:ask:${s.id}`, label: `💬 ${this.t('dc.btn.ask')}`, style: 'primary' }] }]
+          : [],
+      });
+    }
+
     if (action === 'confirm' || action === 'cancel') {
       const p = this.pending.get(ref);
       this.pending.delete(ref);
@@ -371,7 +617,17 @@ export class DiscordBridge {
 
     const s = this.deps.sessions().find((x) => x.id === ref);
     if (!s) return e.reply({ content: this.t('dc.notFound', { q: ref }), ephemeral: true });
-    if (action === 'details') return e.reply({ ...(await this.screenMessage(s, s.title)), ephemeral: true });
+    if (action === 'details') return e.reply({ ...(await this.sessionCard(s, '')), ephemeral: true });
+    if (action === 'ask') {
+      if (!perms.send) return e.reply({ content: this.t('dc.forbidden', { op: '/send' }), ephemeral: true });
+      if (!this.deps.isRunning(s.id))
+        return e.reply({ content: this.t('dc.notRunning', { session: s.title }), ephemeral: true });
+      return e.showModal?.(this.askModal(s));
+    }
+    if (action === 'stop') {
+      if (!perms.stop) return e.reply({ content: this.t('dc.forbidden', { op: '/stop' }), ephemeral: true });
+      return this.interrupt(s, e.userTag, e.reply);
+    }
     if (action === 'allow' || action === 'deny') {
       if (!perms.approve)
         return e.reply({ content: this.t('dc.forbidden', { op: this.t('dc.btn.allow') }), ephemeral: true });
@@ -422,21 +678,8 @@ export class DiscordBridge {
     const header = minutes
       ? this.t('dc.approvalReminder', { session: s.title, min: minutes })
       : this.t('dc.approval', { session: s.title });
-    const msg = await this.screenMessage(s, header, 18);
-    const perms = this.deps.settings().permissions;
-    await this.post(s, {
-      ...msg,
-      mentionUserId: minutes ? this.mentionUser() : undefined,
-      buttons: [
-        ...(perms.approve
-          ? [
-              { id: `cd:allow:${s.id}`, label: this.t('dc.btn.allow'), style: 'success' as const },
-              { id: `cd:deny:${s.id}`, label: this.t('dc.btn.deny'), style: 'danger' as const },
-            ]
-          : []),
-        { id: `cd:details:${s.id}`, label: this.t('dc.btn.details'), style: 'secondary' as const },
-      ],
-    });
+    const msg = await this.sessionCard(s, header, 18);
+    await this.post(s, { ...msg, mentionUserId: minutes ? this.mentionUser() : undefined });
   }
 
   private scheduleReminder(s: Session, n: number): void {
@@ -489,7 +732,7 @@ export class DiscordBridge {
     const diff = await this.deps.diffSummary(s.cwd).catch(() => null);
     if (diff)
       header += `\n${this.t('dc.diff', { files: diff.files, ins: diff.insertions, del: diff.deletions })}`;
-    const msg = await this.screenMessage(s, header, 20);
+    const msg = await this.sessionCard(s, header, 20);
     const long = ms >= settings.mentionAfterSec * 1000;
     await this.post(s, { ...msg, mentionUserId: long ? this.mentionUser() : undefined });
   }
@@ -500,7 +743,7 @@ export class DiscordBridge {
   }
 
   private async postScreen(s: Session, header: string, skipIfUnchanged = false): Promise<void> {
-    const msg = await this.screenMessage(s, header, 20);
+    const msg = await this.sessionCard(s, header, 20);
     if (skipIfUnchanged) {
       const body = msg.content.slice(header.length);
       if (this.lastPosted.get(s.id) === body) return;

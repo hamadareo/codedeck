@@ -11,17 +11,46 @@ export interface OutButton {
   style: ButtonStyle;
 }
 
+export interface OutSelect {
+  id: string;
+  placeholder: string;
+  options: { label: string; value: string; description?: string }[];
+}
+
+/** One row of controls: up to 5 buttons, or one select menu. */
+export type OutRow = { buttons: OutButton[] } | { select: OutSelect };
+
+/** A colored card (a Discord embed). */
+export interface OutCard {
+  title: string;
+  description?: string;
+  /** 0xRRGGBB */
+  color?: number;
+  footer?: string;
+}
+
 export interface OutMessage {
   content: string;
+  card?: OutCard;
   files?: { name: string; data: string }[];
+  /** One row of buttons (shown before `rows`). */
   buttons?: OutButton[];
+  rows?: OutRow[];
   /** Ping this user (only this one; @everyone and roles are never pinged). */
   mentionUserId?: string;
 }
 
-export type Reply = (msg: OutMessage & { ephemeral?: boolean }) => Promise<void>;
+/** A form that pops up over Discord (a modal): text fields only. */
+export interface OutModal {
+  id: string;
+  title: string;
+  inputs: { id: string; label: string; placeholder?: string; long?: boolean; required?: boolean }[];
+}
 
-export type CommandName = 'sessions' | 'new' | 'send' | 'status' | 'stop' | 'usage';
+/** `update`: replace the message the button / menu belongs to, instead of answering below it. */
+export type Reply = (msg: OutMessage & { ephemeral?: boolean; update?: boolean }) => Promise<void>;
+
+export type CommandName = 'panel' | 'sessions' | 'new' | 'send' | 'status' | 'stop' | 'usage';
 
 export interface CommandEvent {
   name: CommandName;
@@ -31,8 +60,20 @@ export interface CommandEvent {
   reply: Reply;
 }
 
+/** A button press, or a choice in a select menu (`values`). */
 export interface ButtonEvent {
   customId: string;
+  values?: string[];
+  userId: string;
+  userTag: string;
+  reply: Reply;
+  /** Open a form instead of replying (only as the first answer). */
+  showModal?(modal: OutModal): Promise<void>;
+}
+
+export interface ModalEvent {
+  customId: string;
+  fields: Record<string, string>;
   userId: string;
   userTag: string;
   reply: Reply;
@@ -64,6 +105,7 @@ export interface CommandDef {
 export interface TransportHandlers {
   command(e: CommandEvent): Promise<void>;
   button(e: ButtonEvent): Promise<void>;
+  modal(e: ModalEvent): Promise<void>;
   autocomplete(e: AutocompleteEvent): Promise<void>;
 }
 

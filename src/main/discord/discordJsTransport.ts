@@ -5,12 +5,19 @@ import {
   ButtonStyle as DjsButtonStyle,
   ChannelType,
   Client,
+  EmbedBuilder,
   Events,
   GatewayIntentBits,
+  MessageFlags,
+  ModalBuilder,
   REST,
   Routes,
   SlashCommandBuilder,
+  StringSelectMenuBuilder,
+  TextInputBuilder,
+  TextInputStyle,
   type Interaction,
+  type MessageActionRowComponentBuilder,
   type MessageCreateOptions,
 } from 'discord.js';
 import type {
@@ -19,6 +26,9 @@ import type {
   CommandName,
   DiscordTransport,
   OutMessage,
+  OutModal,
+  OutRow,
+  Reply,
   TransportHandlers,
 } from './transport';
 
@@ -29,28 +39,95 @@ const STYLE: Record<ButtonStyle, DjsButtonStyle> = {
   danger: DjsButtonStyle.Danger,
 };
 
+function toRow(row: OutRow): ActionRowBuilder<MessageActionRowComponentBuilder> {
+  const r = new ActionRowBuilder<MessageActionRowComponentBuilder>();
+  if ('select' in row)
+    return r.addComponents(
+      new StringSelectMenuBuilder()
+        .setCustomId(row.select.id)
+        .setPlaceholder(row.select.placeholder.slice(0, 150))
+        .addOptions(
+          row.select.options.slice(0, 25).map((o) => ({
+            label: o.label.slice(0, 100),
+            value: o.value.slice(0, 100),
+            description: o.description?.slice(0, 100) || undefined,
+          })),
+        ),
+    );
+  return r.addComponents(
+    row.buttons
+      .slice(0, 5)
+      .map((b) =>
+        new ButtonBuilder().setCustomId(b.id).setLabel(b.label.slice(0, 80)).setStyle(STYLE[b.style]),
+      ),
+  );
+}
+
 function toPayload(msg: OutMessage): MessageCreateOptions {
   const mention = msg.mentionUserId ? `<@${msg.mentionUserId}> ` : '';
+  const rows: OutRow[] = [
+    ...(msg.buttons?.length ? [{ buttons: msg.buttons }] : []),
+    ...(msg.rows ?? []).filter((r) => ('select' in r ? r.select.options.length > 0 : r.buttons.length > 0)),
+  ];
+  const card = msg.card;
   return {
     content: `${mention}${msg.content}`.slice(0, 2000),
     // Only the one user we chose may be pinged: never @everyone, roles, or names in the output.
     allowedMentions: { parse: [], users: msg.mentionUserId ? [msg.mentionUserId] : [] },
-    files: msg.files?.map((f) => new AttachmentBuilder(Buffer.from(f.data, 'utf8'), { name: f.name })),
-    components: msg.buttons?.length
+    embeds: card
       ? [
-          new ActionRowBuilder<ButtonBuilder>().addComponents(
-            msg.buttons
-              .slice(0, 5)
-              .map((b) => new ButtonBuilder().setCustomId(b.id).setLabel(b.label).setStyle(STYLE[b.style])),
-          ),
+          new EmbedBuilder({
+            title: card.title.slice(0, 256),
+            description: card.description?.slice(0, 4096) || undefined,
+            color: card.color,
+            footer: card.footer ? { text: card.footer.slice(0, 2048) } : undefined,
+          }),
         ]
       : [],
+    files: msg.files?.map((f) => new AttachmentBuilder(Buffer.from(f.data, 'utf8'), { name: f.name })),
+    components: rows.slice(0, 5).map(toRow),
+  };
+}
+
+function toModal(m: OutModal): ModalBuilder {
+  return new ModalBuilder()
+    .setCustomId(m.id)
+    .setTitle(m.title.slice(0, 45))
+    .addComponents(
+      m.inputs.slice(0, 5).map((f) =>
+        new ActionRowBuilder<TextInputBuilder>().addComponents(
+          new TextInputBuilder()
+            .setCustomId(f.id)
+            .setLabel(f.label.slice(0, 45))
+            .setStyle(f.long ? TextInputStyle.Paragraph : TextInputStyle.Short)
+            .setRequired(f.required ?? true)
+            .setMaxLength(4000)
+            .setPlaceholder(f.placeholder?.slice(0, 100) ?? ''),
+        ),
+      ),
+    );
+}
+
+type Answerable = Extract<Interaction, { reply: unknown }>;
+
+/** Answer an interaction: first reply (or update of the clicked message), then follow-ups. */
+function replier(i: Answerable, canUpdate: boolean): Reply {
+  return async (m) => {
+    const base = toPayload(m);
+    if (m.update && canUpdate && !i.replied && !i.deferred && 'update' in i) {
+      await (i.update as (p: unknown) => Promise<unknown>)(base);
+      return;
+    }
+    const payload = { ...base, flags: m.ephemeral ? MessageFlags.Ephemeral : undefined };
+    if (!i.replied && !i.deferred) await i.reply(payload as never);
+    else await i.followUp(payload as never);
   };
 }
 
 /**
  * discord.js (gateway) transport. The bot needs no privileged intents: it only
- * receives slash commands and button presses (interactions), never reads messages.
+ * receives slash commands, button presses, menu choices and forms (interactions),
+ * never reads messages.
  */
 export class DiscordJsTransport implements DiscordTransport {
   private client: Client | null = null;
@@ -113,35 +190,31 @@ export class DiscordJsTransport implements DiscordTransport {
       if (i.isChatInputCommand()) {
         const options: Record<string, string> = {};
         for (const o of i.options.data) if (typeof o.value === 'string') options[o.name] = o.value;
-        // Defer first: Discord needs an answer within 3 s; the work may take longer.
-        let deferred = false;
         await h.command({
           name: i.commandName as CommandName,
           options,
           userId: i.user.id,
           userTag: i.user.tag,
-          reply: async (m) => {
-            const payload = {
-              ...toPayload(m),
-              ephemeral: undefined,
-              flags: m.ephemeral ? 1 << 6 : undefined,
-            };
-            if (!deferred && !i.replied) {
-              deferred = true;
-              await i.reply(payload as never);
-            } else await i.followUp(payload as never);
-          },
+          reply: replier(i, false),
         });
-      } else if (i.isButton()) {
+      } else if (i.isButton() || i.isStringSelectMenu()) {
         await h.button({
           customId: i.customId,
+          values: i.isStringSelectMenu() ? i.values : undefined,
           userId: i.user.id,
           userTag: i.user.tag,
-          reply: async (m) => {
-            const payload = { ...toPayload(m), flags: m.ephemeral ? 1 << 6 : undefined };
-            if (!i.replied) await i.reply(payload as never);
-            else await i.followUp(payload as never);
-          },
+          reply: replier(i, true),
+          showModal: (m) => i.showModal(toModal(m)),
+        });
+      } else if (i.isModalSubmit()) {
+        const fields: Record<string, string> = {};
+        for (const f of i.fields.fields.values()) if ('value' in f) fields[f.customId] = String(f.value);
+        await h.modal({
+          customId: i.customId,
+          fields,
+          userId: i.user.id,
+          userTag: i.user.tag,
+          reply: replier(i, false),
         });
       } else if (i.isAutocomplete()) {
         const focused = i.options.getFocused(true);
