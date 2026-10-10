@@ -42,7 +42,7 @@ jobs:
             export CODEDECK_E2E_EXECUTABLE="$(ls -d "$PWD"/release/mac*/CodeDeck.app | head -1)/Contents/MacOS/CodeDeck"
           fi
           echo "$CODEDECK_E2E_EXECUTABLE"
-          npx playwright test app.spec phase2.spec
+          npx playwright test app.spec phase2.spec phase3.spec
       - uses: actions/upload-artifact@v4
         if: failure()
         with:

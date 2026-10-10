@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { Settings, ThemeMode } from '@shared/types';
 import { TERMINAL_FONT_CHOICES, terminalFontFamily } from '@shared/theme';
 import { shortcutLabel, type AppAction, type Platform } from '@shared/keymap';
+import { NOTIFY_KINDS } from '@shared/notify';
 import { saveSettings } from '../settings';
 import { useT } from '../i18n';
 import { Button, Field, Modal, inputCls } from './Modal';
@@ -148,6 +149,43 @@ export function SettingsDialog(props: { settings: Settings; platform: Platform; 
           )}
         </select>
       </Field>
+
+      <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">
+        {t('settings.notifications')}
+      </h3>
+      <div className="space-y-1" data-testid="notify-settings">
+        {(['os', 'inApp'] as const).map((k) => (
+          <label key={k} className="flex items-center gap-2">
+            <input
+              type="checkbox"
+              checked={s.notifications[k]}
+              onChange={(e) => set({ notifications: { ...s.notifications, [k]: e.target.checked } })}
+            />
+            {t(`settings.notify.${k}`)}
+          </label>
+        ))}
+        <div className="grid grid-cols-1 gap-1 pl-5 pt-1 sm:grid-cols-2">
+          {NOTIFY_KINDS.map((k) => (
+            <label key={k} className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={s.notifications.kinds[k]}
+                onChange={(e) =>
+                  set({
+                    notifications: {
+                      ...s.notifications,
+                      kinds: { ...s.notifications.kinds, [k]: e.target.checked },
+                    },
+                  })
+                }
+                data-testid={`notify-kind-${k}`}
+              />
+              {t(`settings.notify.kind.${k}`)}
+            </label>
+          ))}
+        </div>
+        <p className="text-xs text-muted">{t('settings.notify.sessionHint')}</p>
+      </div>
 
       <h3 className="pt-2 text-xs font-semibold uppercase tracking-wider text-muted">
         {t('settings.shortcuts')}

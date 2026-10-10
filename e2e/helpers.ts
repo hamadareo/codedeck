@@ -47,6 +47,9 @@ export async function launch(
       CLAUDECODE: '1',
       CLAUDE_CODE_CHILD_SESSION: '1',
       NO_COLOR: '1',
+      // Record notifications without putting real toasts on the desktop; recompute usage often.
+      CODEDECK_NO_OS_NOTIFY: '1',
+      CODEDECK_USAGE_INTERVAL_MS: '1000',
     } as Record<string, string>,
   });
   // Restored pop-out windows open right after the main one and may come first: pick the main window.

@@ -1,3 +1,5 @@
+import type { NotifySettings } from './notify';
+
 export type ProfileKind = 'personal' | 'team' | 'other';
 export type AuthStatus = 'unknown' | 'connected' | 'logged_out';
 
@@ -90,6 +92,7 @@ export interface Settings {
   /** Sessions shown in their own window; reopened after a restart. */
   popouts: string[];
   sidebarWidth: number;
+  notifications: NotifySettings;
 }
 
 export interface EnvInfo {

@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import type { Settings } from '@shared/types';
 import { isLayout } from '@shared/layout';
+import { DEFAULT_NOTIFY, NOTIFY_KINDS, type NotifySettings } from '@shared/notify';
 
 export type { Settings };
 
@@ -16,7 +17,19 @@ export const DEFAULT_SETTINGS: Settings = {
   rightPanel: { open: false, tab: 'notes', width: 320 },
   popouts: [],
   sidebarWidth: 288,
+  notifications: DEFAULT_NOTIFY,
 };
+
+function normalizeNotify(raw: Partial<NotifySettings> | undefined): NotifySettings {
+  const r = raw ?? {};
+  const kinds = { ...DEFAULT_NOTIFY.kinds };
+  for (const k of NOTIFY_KINDS) if (typeof r.kinds?.[k] === 'boolean') kinds[k] = r.kinds[k];
+  return {
+    os: typeof r.os === 'boolean' ? r.os : DEFAULT_NOTIFY.os,
+    inApp: typeof r.inApp === 'boolean' ? r.inApp : DEFAULT_NOTIFY.inApp,
+    kinds,
+  };
+}
 
 const clamp = (n: unknown, lo: number, hi: number, dflt: number) =>
   typeof n === 'number' && Number.isFinite(n) ? Math.min(hi, Math.max(lo, Math.round(n))) : dflt;
@@ -47,6 +60,7 @@ export function normalizeSettings(raw: Partial<Settings> | null | undefined): Se
     },
     popouts: Array.isArray(r.popouts) ? r.popouts.filter((x): x is string => typeof x === 'string') : [],
     sidebarWidth: clamp(r.sidebarWidth, 200, 480, d.sidebarWidth),
+    notifications: normalizeNotify(r.notifications),
   };
 }
 

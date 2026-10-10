@@ -3,7 +3,8 @@
 // Like the real CLI, it runs the hooks given with `--settings <file>` through
 // the shell each hook names, so CodeDeck's status hooks are tested for real:
 //   start → SessionStart; Enter → UserPromptSubmit, then Stop after a moment;
-//   a line "perm" → Notification(permission_prompt); "fail" → StopFailure.
+//   a line "perm" → Notification(permission_prompt); "fail" → StopFailure;
+//   "limit" → the CLI's "5-hour limit reached" message.
 import fs from 'node:fs';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
@@ -64,6 +65,12 @@ process.stdin.on('data', (d) => {
     if (typed === 'perm') {
       fire('Notification', 'permission_prompt');
       process.stdout.write('\r\nFAKE-CLAUDE permission? (y/n)\r\n');
+      return;
+    }
+    if (typed === 'limit') {
+      // As the real CLI prints it (colored, with cursor moves around it).
+      process.stdout.write('\r\n\x1b[31m⎿  5-hour limit reached\x1b[39m ∙ resets 3pm (Asia/Tokyo)\r\n> ');
+      fire('Stop');
       return;
     }
     if (typed === 'fail') {

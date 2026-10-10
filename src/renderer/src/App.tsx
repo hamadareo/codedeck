@@ -21,7 +21,7 @@ import { api, errorKey } from './api';
 import { LocaleContext, useT } from './i18n';
 import { saveSettings, SettingsContext, useSettings, useSettingsValue } from './settings';
 import { useAppData, useSeen } from './useAppData';
-import { disposeTerminal, setAppActionHandler, setPlatform } from './terminal/registry';
+import { disposeTerminal, focusTerminal, setAppActionHandler, setPlatform } from './terminal/registry';
 import { Sidebar } from './ui/Sidebar';
 import { TabBar } from './ui/TabBar';
 import { PaneArea } from './ui/PaneArea';
@@ -37,6 +37,7 @@ import {
   RenameSessionDialog,
 } from './ui/dialogs';
 import { Button, ConfirmDialog } from './ui/Modal';
+import { NotificationBanners } from './ui/usage';
 
 type Dialog =
   | { kind: 'addProfile' }
@@ -149,9 +150,14 @@ function Shell() {
         const at = paneOfSession(l, id);
         return at ? setFocus(l, at.id) : showSession(l, l.focusedPaneId, id);
       });
+      // Selecting a session (even the one already shown) puts the keyboard in its terminal.
+      requestAnimationFrame(() => requestAnimationFrame(() => focusTerminal(id)));
     },
     [popouts, setLayout],
   );
+
+  // A clicked OS notification brings its session on screen.
+  useEffect(() => api.on('app:focusSession', (id) => selectSession(id)), [selectSession]);
 
   const firstHidden = useCallback(
     (l: Layout) => {
@@ -453,6 +459,7 @@ function Shell() {
           projects={projects}
           sessions={sessions}
           statusOf={statusOf}
+          usage={data.usage}
           activeId={activeId}
           onAddProfile={() => setDialog({ kind: 'addProfile' })}
           onEditProfile={(profile) => setDialog({ kind: 'editProfile', profile })}
@@ -558,6 +565,8 @@ function Shell() {
                 width={rightPanel.width}
                 project={activeProject}
                 activeSessionId={activeId}
+                profiles={profiles}
+                usage={data.usage}
                 onTab={(tab) => void saveSettings({ rightPanel: { ...rightPanel, tab } })}
                 onClose={toggleRightPanel}
                 onResize={(width) => void saveSettings({ rightPanel: { ...rightPanel, width } })}
@@ -567,6 +576,7 @@ function Shell() {
         </main>
       </div>
 
+      <NotificationBanners />
       {dialog?.kind === 'palette' && (
         <CommandPalette entries={paletteEntries} onClose={() => setDialog(null)} />
       )}

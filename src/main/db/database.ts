@@ -48,6 +48,26 @@ const MIGRATIONS: string[] = [
     updated_at INTEGER NOT NULL
   );
   `,
+  // v3: usage limits per profile and the alerts already sent (§7: never twice)
+  `
+  CREATE TABLE profile_usage (
+    profile_id TEXT PRIMARY KEY REFERENCES profiles(id) ON DELETE CASCADE,
+    plan TEXT NOT NULL DEFAULT 'auto',
+    limit_5h INTEGER,
+    limit_7d INTEGER,
+    limit_source TEXT NOT NULL DEFAULT 'none',
+    thresholds TEXT NOT NULL DEFAULT '[70,90,100]',
+    detected_plan TEXT
+  );
+  CREATE TABLE usage_alerts (
+    profile_id TEXT NOT NULL REFERENCES profiles(id) ON DELETE CASCADE,
+    window TEXT NOT NULL,
+    window_key TEXT NOT NULL,
+    threshold INTEGER NOT NULL,
+    created_at INTEGER NOT NULL,
+    PRIMARY KEY (profile_id, window, window_key, threshold)
+  );
+  `,
 ];
 
 export type Db = DatabaseSync;

@@ -9,7 +9,7 @@ export type HookWord = 'start' | 'prompt' | 'stop' | 'failure' | 'permission' | 
 export const HOOK_WORDS: readonly HookWord[] = ['start', 'prompt', 'stop', 'failure', 'permission', 'idle'];
 
 /** Events that move a session's Activity. */
-export type ActivityEvent = HookWord | 'input' | 'seen' | 'reset';
+export type ActivityEvent = HookWord | 'input' | 'seen' | 'reset' | 'limit';
 
 export function nextActivity(prev: Activity, ev: ActivityEvent): Activity {
   switch (ev) {
@@ -21,9 +21,10 @@ export function nextActivity(prev: Activity, ev: ActivityEvent): Activity {
     case 'prompt':
       return 'working';
     case 'stop':
-      return 'done';
+      // The turn that hit the limit also ends with Stop; keep showing the limit.
+      return prev === 'limit' ? 'limit' : 'done';
     case 'failure':
-      return 'error';
+      return prev === 'limit' ? 'limit' : 'error';
     case 'permission':
       return 'approval';
     case 'idle':
@@ -34,6 +35,9 @@ export function nextActivity(prev: Activity, ev: ActivityEvent): Activity {
       return prev === 'approval' ? 'working' : prev;
     case 'seen':
       return prev === 'done' ? 'waiting' : prev;
+    case 'limit':
+      // A "limit reached" message in the output (§7); the next prompt clears it.
+      return 'limit';
   }
 }
 

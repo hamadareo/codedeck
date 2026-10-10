@@ -12,6 +12,12 @@ import { StatusWatcher } from './sessions/statusWatcher';
 import { STATUS_FILE_ENV, writeHookSettings } from './sessions/hooks';
 import { NoteRepo } from './projects/noteRepo';
 import { nextActivity, type ActivityEvent } from '@shared/status';
+import { detectLimitMessage, type LimitMessage } from '@shared/usage';
+
+/** Strip escape sequences so messages can be matched across colors and cursor moves. */
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;?<>=]*[ -/]*[@-~]|\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)|\x1b[@-_]/g;
+const TAIL_CHARS = 2000;
 import { authStatus, buildSpawnSpec, resolveClaude, sessionArgs } from './platform/claude';
 import { defaultProfileDir } from './platform/paths';
 import { claudeEnv } from './platform/env';
@@ -35,7 +41,11 @@ export interface ServiceDeps {
   settings: SettingsStore;
   ptyEvents: PtyEvents;
   onChange(kind: ChangeKind): void;
-  onActivity?(sessionId: string, activity: Activity): void;
+  onActivity?(sessionId: string, activity: Activity, prev: Activity): void;
+  /** `claude auth status` reported this profile's subscription (for usage presets). */
+  onPlan?(profileId: string, subscriptionType: string | null): void;
+  /** A "limit reached" message appeared in a session's output (§7). */
+  onLimit?(sessionId: string, profileId: string, msg: LimitMessage): void;
   /** Where hook status files and the hook settings file live (userData). Omit to run without hooks. */
   stateDir?: string;
   home?: string;
@@ -63,11 +73,15 @@ export class CodeDeckService {
     this.sessions = new SessionRepo(deps.db);
     this.notes = new NoteRepo(deps.db);
     this.ptys = new PtyManager({
-      onData: deps.ptyEvents.onData,
+      onData: (id, data, end) => {
+        deps.ptyEvents.onData(id, data, end);
+        this.observeOutput(id, data);
+      },
       onState: (id, state, code) => {
         if (state !== 'running') {
           this.status?.end(id);
           this.activities.delete(id);
+          this.tails.delete(id);
         }
         deps.ptyEvents.onState(id, state, code);
       },
@@ -100,7 +114,28 @@ export class CodeDeckService {
     const next = nextActivity(prev, ev);
     if (next === prev) return;
     this.activities.set(id, next);
-    this.deps.onActivity?.(id, next);
+    this.deps.onActivity?.(id, next, prev);
+  }
+
+  private readonly tails = new Map<string, string>();
+
+  /**
+   * Watch a session's output for "limit reached" (§7). Read-only: the output
+   * still goes to the terminal untouched. Only a short tail is kept, in memory.
+   */
+  observeOutput(id: string, data: string): void {
+    const tail = ((this.tails.get(id) ?? '') + data.replace(ANSI, ' ')).slice(-TAIL_CHARS);
+    const msg = detectLimitMessage(tail);
+    if (!msg) {
+      this.tails.set(id, tail);
+      return;
+    }
+    // Consume the matched text so the same message is not reported again.
+    this.tails.set(id, '');
+    if (this.activities.get(id) === 'limit') return;
+    this.applyActivity(id, 'limit');
+    const s = this.sessions.get(id);
+    if (s) this.deps.onLimit?.(id, s.profileId, msg);
   }
 
   /** Keystrokes from the user. Answering an approval prompt moves the session back to "working". */
@@ -164,6 +199,7 @@ export class CodeDeckService {
     if (!p) throw new Error(`profile not found: ${id}`);
     const res = await authStatus(p.configDir);
     if (!this.profiles.get(id)) return p; // removed meanwhile
+    if (res?.loggedIn) this.deps.onPlan?.(id, res.subscriptionType);
     const next = res
       ? this.profiles.setAuth(id, res.loggedIn ? 'connected' : 'logged_out', res.loggedIn ? res.email : null)
       : this.profiles.setAuth(id, 'unknown', p.accountEmail);

@@ -4,6 +4,8 @@ import { api } from '../api';
 import { useT } from '../i18n';
 import { AuthStatusLabel, ProfileBadge, SessionStatusLabel } from './badges';
 import { ProfileSelect } from './dialogs';
+import { ProfileUsageBars } from './usage';
+import type { ProfileUsage } from '@shared/usage';
 
 interface Props {
   width: number;
@@ -11,6 +13,7 @@ interface Props {
   projects: Project[];
   sessions: Session[];
   statusOf(id: string): SessionStatus;
+  usage: ProfileUsage[];
   activeId: string | null;
   onAddProfile(): void;
   onEditProfile(p: Profile): void;
@@ -174,6 +177,9 @@ export function Sidebar(props: Props) {
         <div className="flex items-center gap-2 pl-7">
           <AuthStatusLabel status={p.authStatus} />
           {p.accountEmail && <span className="truncate text-xs text-muted">{p.accountEmail}</span>}
+        </div>
+        <div className="pl-7 pr-1 pt-1">
+          <ProfileUsageBars usage={props.usage.find((u) => u.profileId === p.id)} />
         </div>
         {open && (
           <ul className="mt-1 space-y-1 pl-4">

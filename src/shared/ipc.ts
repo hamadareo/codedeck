@@ -10,6 +10,8 @@ import type {
   Session,
   Settings,
 } from './types';
+import type { Plan, ProfileUsage } from './usage';
+import type { NotificationRecord } from './notify';
 
 export interface PtySnapshot {
   data: string;
@@ -64,6 +66,16 @@ export interface InvokeContract {
   'window:dock': { args: [sessionId: string]; result: void };
   'window:popouts': { args: []; result: string[] };
   'clipboard:read': { args: []; result: { text: string; hasImage: boolean } };
+  'usage:list': { args: []; result: ProfileUsage[] };
+  'usage:refresh': { args: []; result: ProfileUsage[] };
+  'usage:setConfig': {
+    args: [
+      profileId: string,
+      patch: { plan?: Plan; limit5h?: number | null; limit7d?: number | null; thresholds?: number[] },
+    ];
+    result: ProfileUsage | undefined;
+  };
+  'notify:history': { args: []; result: NotificationRecord[] };
 }
 
 /** Fire-and-forget channels (ipcRenderer.send ↔ ipcMain.on). */
@@ -85,6 +97,11 @@ export interface EventContract {
   'state:changed': [what: 'profiles' | 'projects' | 'sessions'];
   'settings:changed': [settings: Settings];
   'windows:changed': [popouts: string[]];
+  'usage:changed': [usage: ProfileUsage[]];
+  /** An in-app banner (usage alerts). */
+  'notify:show': [record: NotificationRecord];
+  /** An OS notification was clicked: bring this session on screen. */
+  'app:focusSession': [sessionId: string];
 }
 
 export type InvokeChannel = keyof InvokeContract;
@@ -124,6 +141,10 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'window:dock',
   'window:popouts',
   'clipboard:read',
+  'usage:list',
+  'usage:refresh',
+  'usage:setConfig',
+  'notify:history',
 ];
 export const SEND_CHANNELS: SendChannel[] = [
   'pty:input',
@@ -139,6 +160,9 @@ export const EVENT_CHANNELS: EventChannel[] = [
   'state:changed',
   'settings:changed',
   'windows:changed',
+  'usage:changed',
+  'notify:show',
+  'app:focusSession',
 ];
 
 /** The API exposed on window.codedeck by the preload script. */

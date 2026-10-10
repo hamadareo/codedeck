@@ -5,6 +5,8 @@ import type { InvokeChannel, InvokeContract, SendChannel, SendContract } from '@
 import type { CodeDeckService } from './service';
 import type { SettingsStore } from './settings';
 import type { WindowManager } from './windows';
+import type { UsageService } from './usage/usageService';
+import type { Notifier } from './notifier';
 import { claudeVersion, resolveClaude } from './platform/claude';
 
 type Handler<C extends InvokeChannel> = (
@@ -29,7 +31,18 @@ function gitAvailable(): boolean {
   }
 }
 
-export function registerIpc(svc: CodeDeckService, settings: SettingsStore, wm: WindowManager): void {
+export function registerIpc(
+  svc: CodeDeckService,
+  settings: SettingsStore,
+  wm: WindowManager,
+  usage: UsageService,
+  notifier: Notifier,
+): void {
+  handle('usage:list', () => usage.list());
+  handle('usage:refresh', () => usage.refreshAll());
+  handle('usage:setConfig', (profileId, patch) => usage.setConfig(profileId, patch));
+  handle('notify:history', () => notifier.list());
+
   handle('env:info', async () => ({
     platform: process.platform,
     claudePath: resolveClaude(),

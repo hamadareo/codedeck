@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { Activity, EnvInfo, Profile, Project, PtyState, Session } from '@shared/types';
+import type { ProfileUsage } from '@shared/usage';
 import { api } from './api';
 
 export interface AppData {
@@ -12,6 +13,7 @@ export interface AppData {
   activities: Record<string, Activity>;
   /** Sessions shown in their own window. */
   popouts: string[];
+  usage: ProfileUsage[];
   loaded: boolean;
   refresh(what: 'profiles' | 'projects' | 'sessions'): Promise<void>;
 }
@@ -42,6 +44,7 @@ export function useAppData(): AppData {
   const [exitCodes, setExitCodes] = useState<Record<string, number | null>>({});
   const [activities, setActivities] = useState<Record<string, Activity>>({});
   const [popouts, setPopouts] = useState<string[]>([]);
+  const [usage, setUsage] = useState<ProfileUsage[]>([]);
   const [loaded, setLoaded] = useState(false);
 
   const refresh = useCallback(async (what: 'profiles' | 'projects' | 'sessions') => {
@@ -66,7 +69,9 @@ export function useAppData(): AppData {
       }),
       api.on('activity:changed', (id, activity) => setActivities((a) => ({ ...a, [id]: activity }))),
       api.on('windows:changed', setPopouts),
+      api.on('usage:changed', setUsage),
     ];
+    void api.invoke('usage:list').then(setUsage);
     void (async () => {
       const [p, pr, s, st, act, pop] = await Promise.all([
         api.invoke('profiles:list'),
@@ -88,5 +93,17 @@ export function useAppData(): AppData {
     return () => offs.forEach((off) => off());
   }, [refresh]);
 
-  return { env, profiles, projects, sessions, ptyStates, exitCodes, activities, popouts, loaded, refresh };
+  return {
+    env,
+    profiles,
+    projects,
+    sessions,
+    ptyStates,
+    exitCodes,
+    activities,
+    popouts,
+    usage,
+    loaded,
+    refresh,
+  };
 }

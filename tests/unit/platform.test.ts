@@ -136,13 +136,17 @@ describe('claude helpers', () => {
   });
 
   it('parseAuthStatus reads the CLI JSON, tolerating noise', () => {
-    expect(parseAuthStatus('{"loggedIn":true,"email":"a@b.c","authMethod":"claude.ai"}')).toEqual({
+    expect(
+      parseAuthStatus('{"loggedIn":true,"email":"a@b.c","authMethod":"claude.ai","subscriptionType":"pro"}'),
+    ).toEqual({
       loggedIn: true,
       email: 'a@b.c',
+      subscriptionType: 'pro',
     });
     expect(parseAuthStatus('warning\n{\n "loggedIn": false,\n "authMethod": "none"\n}\n')).toEqual({
       loggedIn: false,
       email: null,
+      subscriptionType: null,
     });
     expect(parseAuthStatus('not json')).toBeNull();
   });

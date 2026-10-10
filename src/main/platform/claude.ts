@@ -119,6 +119,8 @@ export async function claudeVersion(): Promise<string | null> {
 export interface AuthStatusResult {
   loggedIn: boolean;
   email: string | null;
+  /** e.g. "pro", "max", "team" — used only to suggest a usage-limit preset (§7). */
+  subscriptionType: string | null;
 }
 
 /**
@@ -140,8 +142,16 @@ export function parseAuthStatus(stdout: string): AuthStatusResult | null {
   const end = stdout.lastIndexOf('}');
   if (start < 0 || end < start) return null;
   try {
-    const j = JSON.parse(stdout.slice(start, end + 1)) as { loggedIn?: unknown; email?: unknown };
-    return { loggedIn: j.loggedIn === true, email: typeof j.email === 'string' ? j.email : null };
+    const j = JSON.parse(stdout.slice(start, end + 1)) as {
+      loggedIn?: unknown;
+      email?: unknown;
+      subscriptionType?: unknown;
+    };
+    return {
+      loggedIn: j.loggedIn === true,
+      email: typeof j.email === 'string' ? j.email : null,
+      subscriptionType: typeof j.subscriptionType === 'string' ? j.subscriptionType : null,
+    };
   } catch {
     return null;
   }

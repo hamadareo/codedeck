@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
-import type { Project, RightPanelTab } from '@shared/types';
+import type { Profile, Project, RightPanelTab } from '@shared/types';
+import type { ProfileUsage } from '@shared/usage';
+import { UsagePanel } from './usage';
 import { api } from '../api';
 import { useT } from '../i18n';
 import { pasteInto } from '../terminal/registry';
@@ -13,6 +15,8 @@ export function RightPanel(props: {
   width: number;
   project: Project | null;
   activeSessionId: string | null;
+  profiles: Profile[];
+  usage: ProfileUsage[];
   onTab(tab: RightPanelTab): void;
   onClose(): void;
   onResize(width: number): void;
@@ -81,6 +85,8 @@ export function RightPanel(props: {
           ) : (
             <p className="text-muted">{t('notes.noProject')}</p>
           )
+        ) : props.tab === 'usage' ? (
+          <UsagePanel profiles={props.profiles} usage={props.usage} />
         ) : (
           <p className="text-muted">{t(`panel.soon.${props.tab}`)}</p>
         )}
