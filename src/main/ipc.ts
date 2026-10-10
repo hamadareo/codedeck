@@ -2,6 +2,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { gitCommitAll, gitDiff, gitStatus } from './git';
+import { listDir, previewFile, resolveInside } from './files';
 import { listMcp, listSkills, setSkillEnabled } from './extensions';
 import { computeStats } from '@shared/stats';
 import { parsePromptExport, type PromptExport } from '@shared/prompts';
@@ -91,6 +92,21 @@ export function registerIpc(
     if (!ok) throw new Error('git.error.unknownDir');
     return cwd;
   };
+  // File explorer: inside known folders only; Claude Code config dirs (credentials) never.
+  const protectedDirs = () => [
+    ...svc.profiles.list().map((p) => p.configDir),
+    path.join(os.homedir(), '.claude'),
+    path.join(os.homedir(), '.codedeck'),
+  ];
+  const fileIn = (cwd: string, rel: string) => resolveInside(knownDir(cwd), rel, protectedDirs());
+  handle('files:list', (cwd, rel) => listDir(knownDir(cwd), rel, protectedDirs()));
+  handle('files:preview', (cwd, rel) => previewFile(knownDir(cwd), rel, protectedDirs()));
+  handle('files:open', async (cwd, rel) => {
+    const err = await shell.openPath(fileIn(cwd, rel));
+    if (err) throw new Error('files.error.open');
+  });
+  handle('files:reveal', (cwd, rel) => shell.showItemInFolder(fileIn(cwd, rel)));
+
   handle('git:status', (cwd) => gitStatus(knownDir(cwd)));
   handle('git:diff', (cwd, file) => gitDiff(knownDir(cwd), file));
   handle('git:commit', (cwd, message) => gitCommitAll(knownDir(cwd), message));

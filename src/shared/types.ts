@@ -171,7 +171,18 @@ export interface Layout {
   maximizedPaneId: string | null;
 }
 
-export type RightPanelTab = 'notes' | 'diff' | 'tasks' | 'usage';
+export type RightPanelTab = 'notes' | 'files' | 'diff' | 'tasks' | 'usage';
+
+/** One entry of the file explorer; `path` is relative to the session's folder, with `/`. */
+export interface FileEntry {
+  name: string;
+  path: string;
+  kind: 'dir' | 'file';
+  size: number | null;
+}
+
+export type FilePreview =
+  { kind: 'text'; text: string; size: number; truncated: boolean } | { kind: 'binary'; size: number };
 
 export interface Settings {
   externalTerminal: 'auto' | 'windows-terminal' | 'powershell' | 'terminal-app' | 'iterm';

@@ -60,7 +60,7 @@ export function normalizeSettings(raw: Partial<Settings> | null | undefined): Se
     layout: isLayout(r.layout) ? r.layout : null,
     rightPanel: {
       open: rp.open === true,
-      tab: oneOf(rp.tab, ['notes', 'diff', 'tasks', 'usage'], d.rightPanel.tab),
+      tab: oneOf(rp.tab, ['notes', 'files', 'diff', 'tasks', 'usage'], d.rightPanel.tab),
       width: clamp(rp.width, 240, 640, d.rightPanel.width),
     },
     popouts: Array.isArray(r.popouts) ? r.popouts.filter((x): x is string => typeof x === 'string') : [],

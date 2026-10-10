@@ -4,14 +4,15 @@ import type { ProfileUsage } from '@shared/usage';
 import { UsagePanel } from './usage';
 import { TasksPanel } from './TasksPanel';
 import { DiffPanel } from './DiffPanel';
+import { FilesPanel } from './FilesPanel';
 import { api } from '../api';
 import { useT } from '../i18n';
 import { pasteInto } from '../terminal/registry';
 import { Button } from './Modal';
 
-const TABS: RightPanelTab[] = ['notes', 'diff', 'tasks', 'usage'];
+const TABS: RightPanelTab[] = ['notes', 'files', 'diff', 'tasks', 'usage'];
 
-/** Collapsible right panel (§4): notes, git diff, tasks, usage. */
+/** Collapsible right panel (§4): notes, files, git diff, tasks, usage. */
 export function RightPanel(props: {
   tab: RightPanelTab;
   width: number;
@@ -89,6 +90,8 @@ export function RightPanel(props: {
           ) : (
             <p className="text-muted">{t('notes.noProject')}</p>
           )
+        ) : props.tab === 'files' ? (
+          <FilesPanel session={props.activeSession} />
         ) : props.tab === 'usage' ? (
           <UsagePanel profiles={props.profiles} usage={props.usage} />
         ) : props.tab === 'tasks' ? (

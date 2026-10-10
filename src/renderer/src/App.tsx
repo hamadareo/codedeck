@@ -445,7 +445,7 @@ function Shell() {
             terminalFontSize: settings.terminalFontSize - 1,
           }),
       ),
-      ...(['notes', 'diff', 'tasks', 'usage'] as const).map((tab) =>
+      ...(['notes', 'files', 'diff', 'tasks', 'usage'] as const).map((tab) =>
         setting(
           `panel-${tab}`,
           t('cmd.panel', { name: t(`panel.${tab}`) }),

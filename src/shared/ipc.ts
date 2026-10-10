@@ -2,6 +2,8 @@ import type {
   Activity,
   EnvInfo,
   ExtensionsInfo,
+  FileEntry,
+  FilePreview,
   GitStatus,
   Prompt,
   Stats,
@@ -98,6 +100,11 @@ export interface InvokeContract {
   'tasks:move': { args: [id: string, delta: -1 | 1]; result: Task[] };
   /** Opens a session for the task and sends the task as the first instruction. */
   'tasks:start': { args: [id: string, profileId?: string | null]; result: Session };
+  /** File explorer (§5): only inside a project / session folder; profile config dirs never. */
+  'files:list': { args: [cwd: string, rel: string]; result: { entries: FileEntry[]; more: number } };
+  'files:preview': { args: [cwd: string, rel: string]; result: FilePreview };
+  'files:open': { args: [cwd: string, rel: string]; result: void };
+  'files:reveal': { args: [cwd: string, rel: string]; result: void };
   'git:status': { args: [cwd: string]; result: GitStatus };
   'git:diff': { args: [cwd: string, file: string]; result: string };
   'git:commit': { args: [cwd: string, message: string]; result: { ok: boolean; output: string } };
@@ -246,6 +253,10 @@ export const INVOKE_CHANNELS: InvokeChannel[] = [
   'tasks:remove',
   'tasks:move',
   'tasks:start',
+  'files:list',
+  'files:preview',
+  'files:open',
+  'files:reveal',
   'git:status',
   'git:diff',
   'git:commit',
