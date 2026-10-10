@@ -37,6 +37,8 @@ export function useSandbox(label: string): () => Sandbox {
   test.beforeEach(() => {
     sb = makeSandbox(label);
   });
+  // Playwright requires the fixtures argument to be destructured; no fixtures are used here.
+  // eslint-disable-next-line no-empty-pattern
   test.afterEach(({}, info) => {
     // On failure, show what the app printed (main process output): CI-only crashes need it.
     if (info.status !== info.expectedStatus && appOutput.length) {
