@@ -87,6 +87,11 @@ export class PtyManager {
       cwd,
       env: spec.env,
       useConpty: true,
+      // The conpty.dll / OpenConsole.exe shipped with node-pty (the same as Windows Terminal),
+      // not the OS one: with the OS conpty, closing a session stops reading output first and
+      // ClosePseudoConsole then waits for that output forever on older Windows (Server 2022/2025,
+      // Windows 10), freezing the app on quit. Also behaves the same on every Windows version.
+      useConptyDll: process.platform === 'win32',
     });
     // A restart continues the same stream (the old screen stays above the new one).
     const entry: Entry = {
