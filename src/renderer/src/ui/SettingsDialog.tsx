@@ -168,12 +168,13 @@ export function SettingsDialog(props: {
         {t('settings.notifications')}
       </h3>
       <div className="space-y-1" data-testid="notify-settings">
-        {(['os', 'inApp'] as const).map((k) => (
+        {(['os', 'inApp', 'sound'] as const).map((k) => (
           <label key={k} className="flex items-center gap-2">
             <input
               type="checkbox"
               checked={s.notifications[k]}
               onChange={(e) => set({ notifications: { ...s.notifications, [k]: e.target.checked } })}
+              data-testid={`notify-${k}`}
             />
             {t(`settings.notify.${k}`)}
           </label>

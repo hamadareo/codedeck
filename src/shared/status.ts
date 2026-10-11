@@ -58,6 +58,13 @@ export function needsAttention(s: SessionStatus): boolean {
   return s === 'approval' || s === 'done' || s === 'error' || s === 'limit';
 }
 
+/** Open sessions waiting for the user (taskbar / Dock badge and the window title). */
+export function attentionCount(statuses: Iterable<SessionStatus | Activity>): number {
+  let n = 0;
+  for (const s of statuses) if (s !== 'unknown' && needsAttention(s)) n++;
+  return n;
+}
+
 /** Icon + color token per status: never color alone (§4). */
 export const STATUS_STYLE: Record<
   SessionStatus,

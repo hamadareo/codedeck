@@ -3,7 +3,8 @@ import os from 'node:os';
 import path from 'node:path';
 import { execFileSync } from 'node:child_process';
 import { afterEach, describe, expect, it } from 'vitest';
-import { displayStatus, needsAttention, nextActivity, type HookWord } from '@shared/status';
+import { attentionCount, displayStatus, needsAttention, nextActivity, type HookWord } from '@shared/status';
+import { normalizeSettings } from '../../src/main/settings';
 import {
   buildHookSettings,
   hookCommand,
@@ -51,6 +52,21 @@ describe('activity transitions', () => {
     expect(displayStatus({ location: 'embedded' }, 'running', 'approval')).toBe('approval');
     expect(needsAttention('approval')).toBe(true);
     expect(needsAttention('working')).toBe(false);
+  });
+
+  it('counts sessions waiting for the user (badge / window title)', () => {
+    expect(attentionCount(['working', 'approval', 'done', 'unknown', 'waiting', 'error', 'limit'])).toBe(4);
+    expect(attentionCount([])).toBe(0);
+  });
+});
+
+describe('notification chime setting', () => {
+  it('on by default, kept when switched off', () => {
+    expect(normalizeSettings({}).notifications.sound).toBe(true);
+    const off = normalizeSettings({
+      notifications: { ...normalizeSettings({}).notifications, sound: false },
+    });
+    expect(off.notifications.sound).toBe(false);
   });
 });
 

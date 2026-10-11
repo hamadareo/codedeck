@@ -15,7 +15,7 @@ import {
   swapPanes,
   toggleMaximize,
 } from '@shared/layout';
-import { displayStatus } from '@shared/status';
+import { attentionCount, displayStatus } from '@shared/status';
 import type { Layout, Profile, Project, Prompt, Session, SessionStatus, SplitDir } from '@shared/types';
 import { api, errorKey } from './api';
 import { LocaleContext, useT } from './i18n';
@@ -55,6 +55,7 @@ import {
   usePrompts,
 } from './ui/manage';
 import { useBranch } from './ui/DiffPanel';
+import { playChime } from './chime';
 
 type Dialog =
   | { kind: 'addProfile' }
@@ -182,6 +183,26 @@ function Shell() {
     [popouts, setLayout],
   );
 
+  // Sessions waiting for the user, in the window title (taskbar / Mission Control): "(2) CodeDeck".
+  const attention = attentionCount(tabs.filter((s) => s.location === 'embedded').map((s) => statusOf(s.id)));
+  useEffect(() => {
+    document.title = attention ? `(${attention}) CodeDeck` : 'CodeDeck';
+  }, [attention]);
+
+  // A chime when a turn finishes or claude asks for approval (Settings → Notifications).
+  const prevActivities = useRef(data.activities);
+  useEffect(() => {
+    const prev = prevActivities.current;
+    prevActivities.current = data.activities;
+    const n = settings?.notifications;
+    if (!n?.sound) return;
+    for (const [id, a] of Object.entries(data.activities)) {
+      if (a === prev[id]) continue;
+      if (a === 'approval' && n.kinds.sessionApproval) return playChime('approval');
+      if (a === 'done' && prev[id] === 'working' && n.kinds.sessionDone) return playChime('done');
+    }
+  }, [data.activities, settings]);
+
   // A clicked OS notification brings its session on screen.
   useEffect(() => api.on('app:focusSession', (id) => selectSession(id)), [selectSession]);
 
@@ -283,6 +304,7 @@ function Shell() {
     cwd: string;
     title?: string;
     sshHostId?: string | null;
+    remoteControl?: boolean;
   }) => {
     setDialog(null);
     try {
@@ -294,6 +316,16 @@ function Shell() {
       setNotice(t(errorKey(e)));
     }
   };
+
+  /** Same folder, account and host as `s`, as a fresh conversation. */
+  const duplicate = (s: Session) =>
+    startSession({
+      profileId: s.profileId,
+      projectId: s.projectId,
+      cwd: s.cwd,
+      sshHostId: s.sshHostId,
+      remoteControl: s.remoteControl,
+    });
 
   /** A session the user picked from elsewhere (a task): load it before showing it. */
   const showNewSession = useCallback(
@@ -355,6 +387,7 @@ function Shell() {
       out.push(
         cmd('closeTab', t('cmd.closeTab'), () => runAction('closeTab'), 'closeTab'),
         cmd('rename', t('cmd.rename'), () => setDialog({ kind: 'rename', session: active })),
+        cmd('duplicate', t('cmd.duplicate'), () => void duplicate(active)),
       );
       if (active.location === 'embedded') {
         out.push(
@@ -627,6 +660,10 @@ function Shell() {
                 onClosePane={(id) => setLayout((l) => closePane(l, id))}
                 onToggleMax={(id) => setLayout((l) => toggleMaximize(l, id))}
                 onPopout={(id) => void popout(id)}
+                onDuplicate={(id) => {
+                  const s = data.sessions.find((x) => x.id === id);
+                  if (s) void duplicate(s);
+                }}
                 onDock={(id) => void api.invoke('window:dock', id)}
                 onOpenExternal={(id) => setDialog({ kind: 'openExternal', sessionId: id })}
                 onReclaim={(id) => void api.invoke('sessions:reclaim', id)}

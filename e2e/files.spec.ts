@@ -1,11 +1,12 @@
 /**
  * File explorer (right panel "Files"): the session's folder as a tree, a read-only preview,
  * and "hand to claude" (@path into the terminal), by button or drag and drop. Find in terminal.
+ * Conveniences: a chime and a count in the window title when a session waits, duplicate a session.
  */
 import fs from 'node:fs';
 import path from 'node:path';
 import { expect, test } from '@playwright/test';
-import { addProfile, addProject, expectTerminal, launch, useSandbox } from './helpers';
+import { addProfile, addProject, expectTerminal, launch, tabStatus, typeLine, useSandbox } from './helpers';
 
 const sandbox = useSandbox('files');
 
@@ -60,5 +61,40 @@ test('browse the session folder, preview a file, hand it to claude as @path', as
   await expect(page.getByTestId('find-count')).toHaveText('見つかりません');
   await page.keyboard.press('Escape');
   await expect(page.getByTestId('find-bar')).toHaveCount(0);
+  await app.close();
+});
+
+test('waiting sessions chime and show in the title; duplicate opens the same folder and account', async () => {
+  const sb = sandbox();
+  const { app, page } = await launch(sb);
+  await addProfile(page, 'team', 'チーム');
+  await addProject(page, sb.projectDir, 'my project', 'team(チーム)');
+  await page.getByTestId('new-session-my project').click();
+  await page.getByTestId('session-start').click();
+  await expectTerminal(page, /hooks=yes/);
+  // Tab 0 is the profile's login session.
+  await expect(tabStatus(page, 1)).toHaveAttribute('data-status', 'waiting', { timeout: 20_000 });
+  // Count the notes the chime plays (Web Audio oscillators).
+  await page.evaluate(() => {
+    const proto = AudioContext.prototype;
+    const create = proto.createOscillator;
+    (window as unknown as { notes: number }).notes = 0;
+    proto.createOscillator = function (this: AudioContext) {
+      (window as unknown as { notes: number }).notes++;
+      return create.call(this);
+    };
+  });
+
+  await typeLine(page, 'perm');
+  await expect(tabStatus(page, 1)).toHaveAttribute('data-status', 'approval', { timeout: 20_000 });
+  await expect.poll(() => page.title()).toBe('(1) CodeDeck');
+  await expect.poll(() => page.evaluate(() => (window as unknown as { notes: number }).notes)).toBe(2);
+  await page.keyboard.type('y');
+  await expect.poll(() => page.title()).toBe('CodeDeck');
+
+  await page.getByTestId('pane-duplicate').click();
+  await expect(page.getByTestId('session-tab')).toHaveCount(3);
+  await expect(page.getByTestId('session-tab').nth(2)).toContainText('my project #2');
+  await expectTerminal(page, /hooks=yes/);
   await app.close();
 });

@@ -2,7 +2,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { app, BrowserWindow, nativeTheme, Notification, powerSaveBlocker, safeStorage } from 'electron';
 import type { DiscordInfo } from '@shared/ipc';
-import { displayStatus } from '@shared/status';
+import { attentionCount, displayStatus } from '@shared/status';
 import { Logger } from './log';
 import { DiscordController, gitDiffSummary, ThreadRepo } from './discord/controller';
 import { DiscordJsTransport } from './discord/discordJsTransport';
@@ -101,6 +101,7 @@ if (!gotLock) {
       },
       onActivity: (id, activity, prev) => {
         wm.broadcast('activity:changed', id, activity);
+        updateAttention();
         const s = svc?.sessions.get(id);
         if (!s) return;
         const profile = svc?.profiles.get(s.profileId);
@@ -117,10 +118,16 @@ if (!gotLock) {
       onLimit: (_sessionId, profileId, msg) => usage.onLimitMessage(profileId, msg),
       onChange: (what) => {
         wm.broadcast('state:changed', what);
+        if (what === 'sessions') updateAttention();
         if (what === 'profiles') usage.refreshAll();
       },
     });
     const core = svc;
+    function updateAttention(): void {
+      if (!svc) return;
+      const open = svc.sessions.list().filter((s) => s.open && s.location === 'embedded');
+      wm.setAttention(attentionCount(open.map((s) => svc!.activity(s.id))));
+    }
     const discordInfo = (): DiscordInfo => ({
       status: discord?.bridge.getStatus() ?? { state: 'off' },
       hasToken: discord?.hasToken() ?? false,

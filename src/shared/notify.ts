@@ -29,12 +29,15 @@ export interface NotifySettings {
   os: boolean;
   /** Banner inside the app. */
   inApp: boolean;
+  /** A short chime when a session finishes or asks for approval (also while CodeDeck is in front). */
+  sound: boolean;
   kinds: Record<NotifyKind, boolean>;
 }
 
 export const DEFAULT_NOTIFY: NotifySettings = {
   os: true,
   inApp: true,
+  sound: true,
   kinds: {
     usageThreshold: true,
     usageReset: true,

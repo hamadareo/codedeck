@@ -109,7 +109,10 @@ export function TerminalView({ session, focused, ptyState, exitCode }: Props) {
         e.dataTransfer.dropEffect = 'copy';
         setDropping(true);
       }}
-      onDragLeave={() => setDropping(false)}
+      onDragLeave={(e) => {
+        // Moving over the terminal's own elements is not leaving it (no flicker).
+        if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropping(false);
+      }}
       onDrop={onDrop}
     >
       {dropping && (

@@ -18,6 +18,8 @@ export interface PaneHandlers {
   onClosePane(paneId: string): void;
   onToggleMax(paneId: string): void;
   onPopout(sessionId: string): void;
+  /** A new session like this one (same folder, account, host). */
+  onDuplicate(sessionId: string): void;
   onDock(sessionId: string): void;
   onOpenExternal(sessionId: string): void;
   onReclaim(sessionId: string): void;
@@ -308,6 +310,15 @@ function PaneView(props: Props & { paneId: string; sessionId: string | null }) {
                   ↗
                 </button>
               )}
+              <button
+                className={btn}
+                onClick={() => props.onDuplicate(session.id)}
+                title={t('cmd.duplicate')}
+                aria-label={t('cmd.duplicate')}
+                data-testid="pane-duplicate"
+              >
+                ⎘
+              </button>
               <button
                 className={btn}
                 onClick={() => props.onPopout(session.id)}

@@ -169,6 +169,7 @@ const ja = {
   'cmd.settings': '設定を開く',
   'cmd.closeTab': 'タブを閉じる',
   'cmd.rename': 'セッション名を変更',
+  'cmd.duplicate': 'セッションを複製(同じフォルダ・アカウントで新しく開く)',
   'cmd.toggleRightPanel': '右パネルの表示を切り替える',
   'cmd.panel': '右パネル: {name}',
   'cmd.theme': 'テーマ: {name}',
@@ -293,6 +294,7 @@ const ja = {
 
   'settings.notifications': '通知',
   'settings.notify.os': 'OS の通知(Windows はトースト、macOS は通知センター)',
+  'settings.notify.sound': '作業完了・承認待ちで音を鳴らす(CodeDeck を見ているときも鳴ります)',
   'settings.notify.inApp': 'アプリ内のバナー(使用量の通知)',
   'settings.notify.sessionHint': 'セッションの通知は、CodeDeck が前面にないときだけ OS の通知で出します。',
   'settings.notify.kind.usageThreshold': '使用量がしきい値を超えた',
@@ -801,6 +803,7 @@ const en: Record<MessageKey, string> = {
   'cmd.settings': 'Open settings',
   'cmd.closeTab': 'Close tab',
   'cmd.rename': 'Rename session',
+  'cmd.duplicate': 'Duplicate session (a new one in the same folder and account)',
   'cmd.toggleRightPanel': 'Toggle right panel',
   'cmd.panel': 'Right panel: {name}',
   'cmd.theme': 'Theme: {name}',
@@ -920,6 +923,8 @@ const en: Record<MessageKey, string> = {
   'notify.sessionError.body': 'Profile: {profile}',
   'settings.notifications': 'Notifications',
   'settings.notify.os': 'OS notifications (toasts on Windows, Notification Center on macOS)',
+  'settings.notify.sound':
+    'Play a chime when a session finishes or needs approval (also while you are in CodeDeck)',
   'settings.notify.inApp': 'In-app banners (usage alerts)',
   'settings.notify.sessionHint': 'Session alerts use OS notifications only while CodeDeck is not in front.',
   'settings.notify.kind.usageThreshold': 'Usage passed a threshold',

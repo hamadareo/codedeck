@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { BrowserWindow, nativeTheme, shell } from 'electron';
+import { app, BrowserWindow, nativeTheme, shell } from 'electron';
 import type { EventChannel, EventContract, WindowContext } from '@shared/ipc';
 import type { ThemeMode } from '@shared/types';
 
@@ -51,12 +51,29 @@ export class WindowManager {
   createMain(): BrowserWindow {
     const w = this.create({ width: 1400, height: 880, minWidth: 800, minHeight: 500, title: 'CodeDeck' });
     this.main = w;
+    w.on('focus', () => w.flashFrame(false));
     w.on('closed', () => {
       this.main = null;
       this.quitting = true;
       for (const p of this.popouts.values()) if (!p.isDestroyed()) p.close();
     });
     return w;
+  }
+
+  private attention = 0;
+
+  /**
+   * Sessions waiting for the user: a Dock badge on macOS; on Windows the taskbar button
+   * flashes when a new one appears while CodeDeck is in the background.
+   */
+  setAttention(count: number): void {
+    const rose = count > this.attention;
+    this.attention = count;
+    app.setBadgeCount(count);
+    const w = this.main;
+    if (process.platform !== 'win32' || !w || w.isDestroyed()) return;
+    if (rose && !w.isFocused()) w.flashFrame(true);
+    else if (count === 0) w.flashFrame(false);
   }
 
   popout(sessionId: string, title: string): void {

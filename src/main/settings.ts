@@ -32,6 +32,7 @@ function normalizeNotify(raw: Partial<NotifySettings> | undefined): NotifySettin
   return {
     os: typeof r.os === 'boolean' ? r.os : DEFAULT_NOTIFY.os,
     inApp: typeof r.inApp === 'boolean' ? r.inApp : DEFAULT_NOTIFY.inApp,
+    sound: typeof r.sound === 'boolean' ? r.sound : DEFAULT_NOTIFY.sound,
     kinds,
   };
 }
