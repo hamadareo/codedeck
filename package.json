@@ -1,7 +1,7 @@
 {
   "name": "codedeck",
   "productName": "CodeDeck",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "private": true,
   "description": "Run many Claude Code sessions across personal and team accounts in one window",
   "author": "hamadareo",
