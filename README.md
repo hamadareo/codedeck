@@ -6,6 +6,8 @@
 - プロファイルごとに `CLAUDE_CONFIG_DIR` を分けるので、ログアウト・ログインなしで複数のアカウントを同時に使えます。CodeDeck は資格情報を読みません
 - プロジェクトに既定のプロファイルをピン留めすると、そのプロジェクトのセッションは自動で正しいアカウントで起動します
 
+> CodeDeck は個人が開発した非公式のツールで、Anthropic の公式製品ではありません。Anthropic による提供・承認・保証はありません。Claude および Claude Code は Anthropic の商標です。Claude Code の利用には、Anthropic の利用規約が適用されます。
+
 使い方は **[利用ガイド](docs/guide.md)**、仕様は [SPEC.md](SPEC.md)、設計の判断は [docs/decisions.md](docs/decisions.md) を参照。
 
 ## できること
@@ -93,3 +95,7 @@ npm run pack        # 署名なしでパッケージ化(release/)
 - CI(`.github/workflows/ci.yml`): push ごとに macOS と Windows で lint、型チェック、ユニット、E2E(開発版とパッケージ版)
 - リリース(`.github/workflows/release.yml`): `v<版>` のタグを push すると、両 OS でインストーラーを作り、インストールしてから E2E を実行し、GitHub Release(下書き)に添付します
 - macOS の署名と公証: リポジトリの Secrets に `MAC_CSC_LINK`、`MAC_CSC_KEY_PASSWORD`、`APPLE_ID`、`APPLE_APP_SPECIFIC_PASSWORD`、`APPLE_TEAM_ID` を設定すると行います(なければ署名なし)
+
+## ライセンス
+
+[MIT](LICENSE)
