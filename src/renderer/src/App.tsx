@@ -298,34 +298,41 @@ function Shell() {
     return () => window.removeEventListener('keydown', onKey);
   }, [runAction, platform, dialog]);
 
-  const startSession = async (input: {
-    profileId: string;
-    projectId: string | null;
-    cwd: string;
-    title?: string;
-    sshHostId?: string | null;
-    remoteControl?: boolean;
-  }) => {
-    setDialog(null);
-    try {
-      const s = await api.invoke('sessions:create', input);
-      // Load the new row first; otherwise the pane would be emptied as "not an open tab".
-      await data.refresh('sessions');
-      setLayout((l) => showSession(l, l.focusedPaneId, s.id));
-    } catch (e) {
-      setNotice(t(errorKey(e)));
-    }
-  };
+  const { refresh } = data;
+  const startSession = useCallback(
+    async (input: {
+      profileId: string;
+      projectId: string | null;
+      cwd: string;
+      title?: string;
+      sshHostId?: string | null;
+      remoteControl?: boolean;
+    }) => {
+      setDialog(null);
+      try {
+        const s = await api.invoke('sessions:create', input);
+        // Load the new row first; otherwise the pane would be emptied as "not an open tab".
+        await refresh('sessions');
+        setLayout((l) => showSession(l, l.focusedPaneId, s.id));
+      } catch (e) {
+        setNotice(t(errorKey(e)));
+      }
+    },
+    [refresh, setLayout, t],
+  );
 
   /** Same folder, account and host as `s`, as a fresh conversation. */
-  const duplicate = (s: Session) =>
-    startSession({
-      profileId: s.profileId,
-      projectId: s.projectId,
-      cwd: s.cwd,
-      sshHostId: s.sshHostId,
-      remoteControl: s.remoteControl,
-    });
+  const duplicate = useCallback(
+    (s: Session) =>
+      startSession({
+        profileId: s.profileId,
+        projectId: s.projectId,
+        cwd: s.cwd,
+        sshHostId: s.sshHostId,
+        remoteControl: s.remoteControl,
+      }),
+    [startSession],
+  );
 
   /** A session the user picked from elsewhere (a task): load it before showing it. */
   const showNewSession = useCallback(
@@ -505,6 +512,7 @@ function Shell() {
     selectSession,
     toggleRightPanel,
     prompts,
+    duplicate,
   ]);
 
   const branch = useBranch(active && !active.sshHostId ? active.cwd : null);

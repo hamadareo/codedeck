@@ -43,9 +43,17 @@ const settingsIdx = args.indexOf('--settings');
 const settings =
   settingsIdx >= 0 ? JSON.parse(fs.readFileSync(args[settingsIdx + 1], 'utf8')) : { hooks: {} };
 
-// Like claude, each hook gets the event's JSON on stdin.
+// Like claude, each hook gets the event's JSON on stdin, and hooks run one event after another:
+// a slow hook (PowerShell on a busy runner) never reports a later event before an earlier one.
+let hooks = Promise.resolve();
 function fire(event, matchValue) {
   const input = JSON.stringify({ session_id: sessionId, hook_event_name: event, cwd: process.cwd() });
+  hooks = hooks.then(() => Promise.all(runHooks(event, matchValue, input)));
+  return hooks;
+}
+
+function runHooks(event, matchValue, input) {
+  const runs = [];
   for (const group of settings.hooks?.[event] ?? []) {
     if (group.matcher && !new RegExp(`^(?:${group.matcher})$`).test(matchValue ?? '')) continue;
     for (const h of group.hooks) {
@@ -58,8 +66,10 @@ function fire(event, matchValue) {
       const child = spawn(file, argv, { stdio: ['pipe', 'ignore', 'ignore'], windowsHide: true });
       child.stdin.on('error', () => {});
       child.stdin.end(input);
+      runs.push(new Promise((resolve) => (child.on('exit', resolve), child.on('error', resolve))));
     }
   }
+  return runs;
 }
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -137,15 +147,17 @@ function onInput(d) {
       process.stdout.write('\r\nFAKE-CLAUDE failed\r\n> ');
       return;
     }
-    fire('UserPromptSubmit');
     const dir = path.join(cfg, 'projects', 'fake-project');
     fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(path.join(dir, `${sessionId}.jsonl`), '{}\n');
     process.stdout.write('\r\nFAKE-CLAUDE saved\r\n');
-    setTimeout(() => {
-      fire('Stop');
-      process.stdout.write('FAKE-CLAUDE done\r\n> ');
-    }, 1500);
+    // claude works on the prompt only after its UserPromptSubmit hooks have finished.
+    void fire('UserPromptSubmit').then(() =>
+      setTimeout(() => {
+        fire('Stop');
+        process.stdout.write('FAKE-CLAUDE done\r\n> ');
+      }, 1500),
+    );
     return;
   }
   line += d;
